@@ -1,0 +1,10 @@
+import { handle } from "hono/vercel";
+import { createApi } from "@/server/api/app";
+import { verifyToken } from "@/server/api/auth";
+import { getDatabase } from "@/server/db/client";
+import { createInventoryService } from "@/server/services/inventory";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+const app = createApi({ verifyToken, service: () => createInventoryService(getDatabase()) });
+export const GET = handle(app);
+export const POST = handle(app);

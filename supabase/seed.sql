@@ -1,0 +1,2 @@
+-- Categories are created per account through POST /api/profile/bootstrap.
+-- No real users or shared financial data are seeded.
