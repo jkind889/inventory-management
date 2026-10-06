@@ -11,7 +11,7 @@ A desktop-first collection and purchase tracker. Built with Next.js, React, Type
 - Atomic item/expense creation, existing-item entry, and date-based spending totals.
 - Local integration tests covering real Auth, API requests, transactions, and account isolation.
 
-The homepage is a placeholder. Collection/sign-in interfaces, photos, wishlist conversion, refunds, subscriptions, and check-ins are next. See [the build plan](docs/build-plan.md) for the product scope.
+The homepage now includes email sign-in, account creation, password-reset screens, and a responsive collection interface. Search, category filters, sorting, grid/list views, item details, new purchases, and existing-item entry use the authenticated Hono API. The Spending view shows a selected month’s total, category breakdown, and paginated purchase history with linked item details. Photos, wishlist conversion, refunds, subscriptions, and check-ins are next. See [the build plan](docs/build-plan.md) for the product scope.
 
 ## Project connections
 
@@ -59,7 +59,7 @@ npm run build
 
 `npm test` runs API boundary tests and includes database integration tests when `.env.test.local` exists. `npm run db:test` requires the local test environment and fails if it is missing. Integration tests refuse remote database hosts, create temporary accounts, and remove them afterward.
 
-The initial verification passed 15 tests, the production build, lint, and TypeScript. The schema also passed a clean local reset and cloud RLS checks with rolled-back fixtures. Supabase's security advisories are clear; remaining performance notices identify unused indexes on the empty database. The dependency audit is clear. A scoped esbuild override fixes an advisory in Drizzle Kit's development tooling; introspection was verified with that override.
+The current verification passed 23 tests, the production build, lint, and TypeScript. The schema also passed a clean local reset and cloud RLS checks with rolled-back fixtures. Supabase's security advisories are clear; remaining performance notices identify unused indexes on the empty database. The dependency audit is clear. A scoped esbuild override fixes an advisory in Drizzle Kit's development tooling; introspection was verified with that override.
 
 ## API
 
@@ -70,10 +70,12 @@ Every endpoint except health requires `Authorization: Bearer <Supabase access to
 | GET /api/health | Process health; does not claim database readiness. |
 | POST /api/profile/bootstrap | Create a profile and six starter categories once. Body: `{}` or currency/timezone preferences. |
 | GET /api/categories | Active categories belonging to the account. |
+| GET /api/collection | Owned collection with exact recorded costs, total count, `q`, `categoryId`, `sort` (newest/name/purchased), `limit`, and `offset`. |
+| GET /api/items/:id | Account-scoped item and its purchase records. |
 | GET /api/items | Owned, unarchived items; `limit` and `offset` pagination. |
 | POST /api/items | Existing item with name/category and optional acquisition date/description; no expense. |
 | POST /api/purchases | Owned item plus expense, in one transaction. Requires a UUID `Idempotency-Key` header. |
-| GET /api/transactions | Confirmed expenses, paginated. |
+| GET /api/transactions | Confirmed expenses with item/category names and total count; `limit`/`offset` pagination and optional paired `from`/`to` dates (inclusive). |
 | GET /api/spending/summary?from=2026-10-01&to=2026-10-31 | Inclusive calendar-date spending total and category breakdown. |
 
 Example purchase body:
@@ -107,3 +109,15 @@ npm run db:test
 `npm run db:types` introspects the database into the ignored `drizzle-introspection` directory. Set `DATABASE_ADMIN_URL` locally for full introspection, then review the output and update `src/server/db/schema.ts`. Never use an administrative connection for application traffic.
 
 Each application query runs in a transaction with transaction-local verified identity. The runtime role has no bypass-RLS, role-management, or DDL rights. The private schema has no browser Data API grants. Profiles/categories/items permit scoped updates; expense and operation records are insert/read only at this stage. Credentials remain in ignored environment files.
+
+## Sign-in configuration
+
+Use the Supabase publishable key in the browser; the restricted database connection stays server-only. Sessions persist in the browser and API requests carry the access token; Hono verifies it before running account-scoped queries. Signing out clears the collection UI.
+
+Set Supabase Auth's Site URL to the deployed app origin and allow its callback URLs, including `/?mode=recovery`; allow `http://localhost:3000` and its recovery URL for local development. Account creation can require email confirmation depending on the project configuration. Confirmation and password recovery depend on Supabase email delivery; production email delivery has not been verified in this UI pass. Use an appropriate SMTP provider before relying on production email flows.
+
+The collection creates a profile and six starter categories on first sign-in. New accounts choose one reporting currency. New purchases create spending; “Already owned” creates only an item. Unknown prices/dates are explicitly labeled. Artwork identifies categories and does not represent uploaded item photos.
+
+## Spending view
+
+After signing in, choose **Spending** in the sidebar or mobile navigation. The initial month uses the account timezone. Month controls update both the total and history using actual purchase dates, including the first and last calendar day. History pages show 10 transactions; totals always include the full selected month. Existing possessions without expenses do not affect totals. Archived items/categories retain their spending records. This first spending slice is read-only; quick-expense entry, corrections, refunds, and subscriptions remain future work.

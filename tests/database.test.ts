@@ -81,6 +81,33 @@ describe.skipIf(!enabled)("local Postgres integration", () => {
     expect((await service.spending(userA, "2026-10-01", "2026-10-31")).grossSpendingMinor).toBe("19999");
     expect((await service.spending(userA, "2026-09-01", "2026-09-30")).grossSpendingMinor).toBe("0");
   });
+  it("filters collections and protects item details across users", async () => {
+    const query = { q: "HEAD", sort: "name" as const, limit: 12, offset: 0 };
+    const result = await service.collection(userA, query);
+    expect(result.total).toBe(1);
+    expect(result.data[0].recordedCostMinor).toBe("19999");
+    expect((await service.collection(userA, { ...query, offset: 12 })).data).toHaveLength(0);
+    expect((await service.collection(userA, { ...query, categoryId: categoryB })).total).toBe(0);
+    expect((await service.collection(userA, { ...query, q: "%" })).total).toBe(0);
+    expect((await service.collection(userB, { ...query, q: "" })).total).toBe(0);
+    const existing = await service.collection(userA, { ...query, q: "Old chair" });
+    expect(existing.data[0].recordedCostMinor).toBeNull();
+    expect((await service.itemDetail(userA, result.data[0].id)).transactions).toHaveLength(1);
+    await expect(service.itemDetail(userB, result.data[0].id)).rejects.toMatchObject({ status: 404 });
+  });
+  it("keeps monthly history, totals, pagination, and ownership aligned", async () => {
+    const input = { from: "2026-10-01", to: "2026-10-31", limit: 1, offset: 0 };
+    const history = await service.transactionHistory(userA, input);
+    expect(history.total).toBe(1);
+    expect(history.data[0]).toMatchObject({ itemName: "Headphones", amountMinor: 19999, occurredOn: "2026-10-01" });
+    expect((await service.transactionHistory(userA, { ...input, offset: 1 })).data).toHaveLength(0);
+    expect((await service.transactionHistory(userA, { ...input, from: "2026-09-01", to: "2026-09-30" })).total).toBe(0);
+    expect((await service.transactionHistory(userB, input)).total).toBe(0);
+    // History survives archiving its collection item.
+    await withUser(connection.db, userA, tx => tx.update(items).set({ archivedAt: new Date().toISOString() }).where(eq(items.id, history.data[0].itemId!)));
+    expect((await service.transactionHistory(userA, input)).data[0].itemArchivedAt).not.toBeNull();
+    expect((await service.spending(userA, input.from, input.to)).grossSpendingMinor).toBe("19999");
+  });
   it("uses a role without elevated privileges and denies the Data API schema access", async () => {
     const [role] = await connection.db.execute(sql`select rolbypassrls, rolsuper, rolcreaterole from pg_roles where rolname = current_user`);
     expect(role).toMatchObject({ rolbypassrls: false, rolsuper: false, rolcreaterole: false });

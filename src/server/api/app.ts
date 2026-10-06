@@ -3,7 +3,7 @@ import { HTTPException } from "hono/http-exception";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import { z, ZodError } from "zod";
-import { bootstrapInput, existingItemInput, paginationInput, purchaseInput, spendingInput } from "../../shared/contracts";
+import { bootstrapInput, collectionInput, existingItemInput, paginationInput, purchaseInput, spendingInput, transactionListInput } from "../../shared/contracts";
 import type { InventoryService } from "../services/inventory";
 
 type Dependencies = { verifyToken: (token: string) => Promise<string | null>; service: () => InventoryService };
@@ -26,6 +26,8 @@ export function createApi(deps: Dependencies) {
     return c.json(await deps.service().bootstrap(c.get("userId"), input));
   });
   app.get("/categories", async c => c.json({ data: await deps.service().categories(c.get("userId")) }));
+  app.get("/collection", async c => c.json(await deps.service().collection(c.get("userId"), collectionInput.parse(c.req.query()))));
+  app.get("/items/:id", async c => c.json(await deps.service().itemDetail(c.get("userId"), z.uuid().parse(c.req.param("id")))));
   app.get("/items", async c => {
     const { limit, offset } = paginationInput.parse(c.req.query());
     return c.json({ data: await deps.service().items(c.get("userId"), limit, offset), limit, offset });
@@ -41,8 +43,8 @@ export function createApi(deps: Dependencies) {
     return c.json(result, result.replayed ? 200 : 201);
   });
   app.get("/transactions", async c => {
-    const { limit, offset } = paginationInput.parse(c.req.query());
-    return c.json({ data: await deps.service().transactions(c.get("userId"), limit, offset), limit, offset });
+    const input = transactionListInput.parse(c.req.query());
+    return c.json(await deps.service().transactionHistory(c.get("userId"), input));
   });
   app.get("/spending/summary", async c => {
     const { from, to } = spendingInput.parse(c.req.query());

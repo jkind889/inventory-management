@@ -25,6 +25,12 @@ describe("API boundary", () => {
     expect((await api().request("/api/items", { method: "POST", headers, body: "{" })).status).toBe(400);
     expect((await api().request("/api/purchases", { method: "POST", headers, body: "{}" })).status).toBe(400);
   });
+  it("validates paired transaction dates before querying", async () => {
+    const headers = { Authorization: "Bearer valid" };
+    for (const query of ["from=2026-10-01", "to=2026-10-31", "from=2026-10-02&to=2026-10-01", "from=2026-02-30&to=2026-03-01", "limit=0"]) {
+      expect((await api().request(`/api/transactions?${query}`, { headers })).status).toBe(400);
+    }
+  });
   it("bounds pagination and validates spending date order", async () => {
     const headers = { Authorization: "Bearer valid" };
     expect((await api().request("/api/items?limit=100000", { headers })).status).toBe(400);

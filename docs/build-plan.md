@@ -1,6 +1,6 @@
 # Collection app: data model and first build
 
-Status: backend foundation implemented October 1, 2026. See README.md for tested endpoints, hosted migration status, and the verified hosted connection. Collection UI, photos, wishlist conversion, refunds/sales, subscriptions, and check-ins remain future slices.
+Status: backend foundation, sign-in, collection interface, and a read-only monthly Spending view are implemented. See README.md for tested endpoints and setup. Spending includes category totals, date-filtered pagination, and linked item details; standalone expense entry, photos, wishlist conversion, refunds/sales, subscriptions, and check-ins remain future slices.
 
 ## Product scope
 
