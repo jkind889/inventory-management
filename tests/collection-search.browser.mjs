@@ -73,9 +73,12 @@ try {
   await page.goto(baseUrl);
   assert.equal(new URL(page.url()).origin, new URL(baseUrl).origin);
   assert.equal(await page.title(), "Inventory");
-  await page.getByRole("button", { name: "View collection", exact: false }).click();
   await settled("13 items");
-  assert.equal(await page.locator(".item-card").count(), 12);
+  await page.getByRole("list", { name: "Collection items" }).waitFor();
+  assert.equal(await page.locator(".collection-register-row").count(), 12);
+  assert.equal(await page.locator(".collection-register .artwork").count(), 0);
+  assert.equal(await page.locator(".register-price").first().getAttribute("aria-label"), "Price not recorded");
+  assert.equal(await page.locator(".register-date").first().getAttribute("aria-label"), "Date not recorded");
   assert.equal(await page.locator("nextjs-portal").getByText("Runtime Error", { exact: false }).count(), 0);
   await page.screenshot({ path: `${evidenceDir}/loaded.png` });
 
@@ -143,9 +146,9 @@ try {
   await page.getByRole("combobox", { name: "Sort collection" }).selectOption("name");
   await settled("13 items");
   assert.equal(requests.at(-1).sort, "name");
-  await page.getByRole("combobox", { name: "Filter category" }).selectOption("");
+  await page.getByRole("navigation", { name: "Collection navigation" }).getByRole("button", { name: /All items/ }).click();
   await settled("13 items");
-  await page.getByRole("combobox", { name: "Filter category" }).selectOption(categoryId);
+  await page.getByRole("navigation", { name: "Collection navigation" }).getByRole("button", { name: /Furniture/ }).click();
   await settled("13 items");
   assert.equal(requests.at(-1).category, categoryId);
   console.log("PASS sort and category changes complete their requests");
@@ -154,6 +157,7 @@ try {
   await search.fill("x");
   await search.fill("");
   await settled("13 items");
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, "Mobile list overflow");
   await page.screenshot({ path: `${evidenceDir}/mobile.png` });
   assert.equal(await page.locator("nextjs-portal").getByText("Runtime Error", { exact: false }).count(), 0);
   assert.ok(failedRequests.every(request => request.path === "/api/collection" && request.error === "net::ERR_ABORTED"), "Unexpected failed resource requests");

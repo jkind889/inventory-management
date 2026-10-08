@@ -1,15 +1,15 @@
 # Submission retries
 
 Retry protection is the default for any mutation where repeating an intended
-action could create duplicate records or repeat a side effect. Purchases and
-“Already owned” entries implement this contract today. Naturally idempotent
+action could create duplicate records or repeat a side effect. Purchases,
+“Already owned” entries, wants, and item value check-ins implement this contract today. Naturally idempotent
 actions, such as setting a preference to a specific value, may use their own
 atomic implementation if repetition already has the same effect.
 
 ## Request identity
 
 The browser creates one UUID `Idempotency-Key` for an intended submission and
-retains it after a timeout, lost response, or other ambiguous error. Both creation
+retains it after a timeout, lost response, or other ambiguous error. Creation
 flows use `getSubmissionAttempt` in `src/shared/submission.ts`. The endpoint and
 serialized fields identify the current attempt. Edited fields or a different
 flow receive a new key; confirmed success clears the attempt. A separate intended
@@ -63,3 +63,9 @@ Migration `20261007022934_existing_item_idempotency.sql` has been applied to the
 configured hosted project and the local database. Apply it before deploying this
 API change to any other database. `POST /api/items` now requires an
 `Idempotency-Key` header just like `POST /api/purchases`.
+
+Item value check-ins use the `item_review` operation type. The validated receipt
+payload includes the item ID to reject reuse across targets. See
+[item-worth.md](item-worth.md) for the API contract and form lifetime. Migration
+`20261008172949_subscriptions_and_item_reviews.sql` is applied locally and to the
+configured hosted project.

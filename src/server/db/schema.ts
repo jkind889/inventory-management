@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
-import { bigint, date, jsonb, pgSchema, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, date, jsonb, pgSchema, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { usageFrequencies, worthVerdicts } from "../../shared/reviews";
 
 // Query models only. supabase/migrations owns constraints, indexes, grants, and RLS.
 export const appSchema = pgSchema("app");
@@ -30,9 +31,18 @@ export const transactions = appSchema.table("transactions", {
   occurredOn: date("occurred_on").notNull(), merchant: text("merchant"), note: text("note"), ...audit(),
 });
 export type PurchaseResult = { item: typeof items.$inferSelect; transaction: typeof transactions.$inferSelect };
+export const itemReviews = appSchema.table("item_reviews", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull(), itemId: uuid("item_id").notNull(),
+  verdict: text("verdict", { enum: worthVerdicts }).notNull(),
+  usageFrequency: text("usage_frequency", { enum: usageFrequencies }),
+  wouldBuyAgain: boolean("would_buy_again"), note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+});
 export type OperationResults = {
   purchase: PurchaseResult;
   existing_item: { item: typeof items.$inferSelect };
+  item_review: { review: typeof itemReviews.$inferSelect };
 };
 export const operations = appSchema.table("operations", {
   id: uuid("id").primaryKey().defaultRandom(), userId: uuid("user_id").notNull(), idempotencyKey: uuid("idempotency_key").notNull(),

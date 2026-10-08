@@ -3,8 +3,9 @@ import { HTTPException } from "hono/http-exception";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import { z, ZodError } from "zod";
-import { bootstrapInput, collectionInput, existingItemInput, wantInput, paginationInput, purchaseInput, spendingInput, transactionListInput } from "../../shared/contracts";
+import { bootstrapInput, collectionInput, existingItemInput, wantInput, wantsListInput, paginationInput, purchaseInput, spendingInput, transactionListInput } from "../../shared/contracts";
 import type { InventoryService } from "../services/inventory";
+import { itemReviewInput } from "../../shared/contracts";
 
 type Dependencies = { verifyToken: (token: string) => Promise<string | null>; service: () => InventoryService };
 export function createApi(deps: Dependencies) {
@@ -28,8 +29,8 @@ export function createApi(deps: Dependencies) {
   app.get("/categories", async c => c.json({ data: await deps.service().categories(c.get("userId")) }));
   app.get("/collections/overview", async c => c.json(await deps.service().collectionOverview(c.get("userId"))));
   app.get("/wants", async c => {
-    const { limit, offset } = paginationInput.parse(c.req.query());
-    return c.json(await deps.service().wants(c.get("userId"), limit, offset));
+    const input = wantsListInput.parse(c.req.query());
+    return c.json(await deps.service().wants(c.get("userId"), input));
   });
   app.post("/wants", async c => {
     const key = z.uuid().parse(c.req.header("Idempotency-Key"));
@@ -39,6 +40,13 @@ export function createApi(deps: Dependencies) {
   });
   app.get("/collection", async c => c.json(await deps.service().collection(c.get("userId"), collectionInput.parse(c.req.query()))));
   app.get("/items/:id", async c => c.json(await deps.service().itemDetail(c.get("userId"), z.uuid().parse(c.req.param("id")))));
+  app.post("/items/:id/reviews", async c => {
+    const id = z.uuid().parse(c.req.param("id"));
+    const key = z.uuid().parse(c.req.header("Idempotency-Key"));
+    const input = itemReviewInput.parse(await c.req.json());
+    const result = await deps.service().addItemReview(c.get("userId"), id, key, input);
+    return c.json(result, result.replayed ? 200 : 201);
+  });
   app.get("/items", async c => {
     const { limit, offset } = paginationInput.parse(c.req.query());
     return c.json({ data: await deps.service().items(c.get("userId"), limit, offset), limit, offset });

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { Dialog } from "@/components/dialog";
 import { Icon } from "@/components/icon";
-import { CategoryArtwork } from "@/components/category-artwork";
+import { WorkbenchInspector, WorkbenchPagination, WorkbenchSidebar } from "@/features/collection/workbench-panels";
 import {
   formatMoney,
   parsePrice,
@@ -21,11 +21,13 @@ function AddWant({
   profile,
   close,
   saved,
+  categoryId,
 }: {
   categories: Category[];
   profile: Profile;
   close: () => void;
   saved: () => void;
+  categoryId: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -87,7 +89,7 @@ function AddWant({
           </label>
           <label className="field">
             Collection
-            <select name="category" required>
+            <select name="category" required defaultValue={categoryId || categories[0]?.id}>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -153,186 +155,130 @@ function AddWant({
     </Dialog>
   );
 }
-export function WantsScreen({
-  profile,
-  categories,
-  openItem,
-}: {
-  profile: Profile;
-  categories: Category[];
-  openItem: (id: string) => void;
-}) {
+export function WantsScreen({ profile, categories }: { profile: Profile; categories: Category[] }) {
   const [add, setAdd] = useState(false);
   const [offset, setOffset] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const [notice, setNotice] = useState("");
-  const key = `${offset}:${refresh}`;
+  const [selected, setSelected] = useState<string | null>(null);
+  const [category, setCategory] = useState("");
+  const [query, setQuery] = useState("");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("priority");
+  const key = JSON.stringify([offset, refresh, category, search, sort]);
   const [completed, setCompleted] = useState<{
     key: string;
     result?: WantsResponse;
     error?: string;
   } | null>(null);
   useEffect(() => {
+    const timer = setTimeout(() => { setSearch(query); setOffset(0); }, 250);
+    return () => clearTimeout(timer);
+  }, [query]);
+  useEffect(() => {
     const controller = new AbortController();
-    api<WantsResponse>(`/wants?limit=12&offset=${offset}`, {
-      signal: controller.signal,
-    })
+    const params = new URLSearchParams({ limit: "12", offset: String(offset), q: search, sort });
+    if (category) params.set("categoryId", category);
+    api<WantsResponse>(`/wants?${params}`, { signal: controller.signal })
       .then((result) => {
-        if (!controller.signal.aborted)
-          setCompleted({
-            key,
-            result,
-          });
+        if (!controller.signal.aborted) setCompleted({ key, result });
       })
       .catch((error) => {
-        if (!controller.signal.aborted)
-          setCompleted({
-            key,
-            error: errorMessage(error),
-          });
+        if (!controller.signal.aborted) setCompleted({ key, error: errorMessage(error) });
       });
     return () => controller.abort();
-  }, [key, offset]);
-  const ready = completed?.key === key;
+  }, [key, offset, category, search, sort]);
+  const ready = completed?.key === key && query === search;
   const result = ready ? completed?.result : undefined;
+  const activeName = categories.find((c) => c.id === category)?.name ?? "All wants";
+  function filter(id: string) {
+    setCategory(id);
+    setOffset(0);
+    setSelected(null);
+  }
+  function changePage(value: number) {
+    setOffset(value);
+    setSelected(null);
+  }
   return (
-    <>
-      <header className="collection-heading">
-        <div>
-          <h1>Future Wants</h1>
-          <p className="muted">Things to consider. A little time to decide.</p>
-        </div>
-        <button
-          className="button secondary"
-          onClick={() => setAdd(true)}
-          disabled={!categories.length}
-        >
-          Add want <Icon name="plus" size={18} />
-        </button>
-      </header>
-      <div className="wants-note">
-        <span>Estimated prices don’t count as spending.</span>
-        <span>High priority first</span>
-      </div>
-      {notice && (
-        <div className="notice" role="status">
-          {notice}
-          <button
-            className="icon-button"
-            aria-label="Dismiss message"
-            onClick={() => setNotice("")}
-          >
-            <Icon name="close" size={16} />
-          </button>
-        </div>
-      )}
-      {!ready ? (
-        <div
-          className="item-grid"
-          role="status"
-          aria-label="Loading future wants"
-        >
-          {[0, 1, 2].map((i) => (
-            <div className="skeleton" key={i} />
-          ))}
-        </div>
-      ) : completed.error ? (
-        <div className="empty-state" role="alert">
-          <h2>Future Wants couldn’t load.</h2>
-          <p>{completed.error}</p>
-          <button
-            className="button secondary"
-            onClick={() => setRefresh((v) => v + 1)}
-          >
-            Try again
-          </button>
-        </div>
-      ) : !result?.data.length ? (
-        <div className="empty-state">
-          <Icon name="box" size={44} />
-          <h2>A little room for possibility.</h2>
-          <p>
-            Save something you’re considering, with a link or an estimated
-            price.
-          </p>
-          <button
-            className="button secondary"
-            disabled={!categories.length}
-            onClick={() => setAdd(true)}
-          >
-            Add your first want <Icon name="plus" size={16} />
-          </button>
-        </div>
-      ) : (
-        <div className="item-grid wants-grid">
-          {result.data.map((item) => {
-            const category =
-              categories.find((c) => c.id === item.categoryId)?.name ?? "Other";
-            return (
-              <button
-                className="item-card"
-                key={item.id}
-                onClick={() => openItem(item.id)}
-              >
-                <CategoryArtwork category={category} />
-                <div className="item-copy">
-                  <div className="want-meta">
-                    <span>{category}</span>
-                    <span>
-                      {item.priority === 1
-                        ? "High"
-                        : item.priority === 3
-                          ? "Low"
-                          : "Medium"}{" "}
-                      priority
-                    </span>
-                  </div>
-                  <h2>{item.name}</h2>
-                  <p>
-                    {item.targetAmountMinor === null
-                      ? "Price not estimated"
-                      : `${formatMoney(item.targetAmountMinor, profile.currency)} estimated`}
-                  </p>
+    <div className="wants-workbench">
+      {notice && <div className="notice" role="status">
+        {notice}
+        <button className="icon-button" aria-label="Dismiss message" onClick={() => setNotice("")}><Icon name="close" size={16} /></button>
+      </div>}
+      <div className="collection-workbench">
+        <WorkbenchSidebar categories={categories} category={category} filter={filter} allLabel="All wants" />
+        <div className="workbench-workspace">
+          <WorkbenchInspector selected={selected} categories={categories} profile={profile} close={() => setSelected(null)} wants />
+          <section className="workbench-results" aria-label="Future Wants">
+            <header className="results-heading">
+              <h2>Future Wants <span>/ {activeName}</span></h2>
+              <button className="button secondary" onClick={() => setAdd(true)} disabled={!categories.length}><Icon name="plus" size={16} />Add want</button>
+            </header>
+            <div className="results-toolbar">
+              <label className="workbench-search">
+                <Icon name="search" size={16} />
+                <input aria-label="Search future wants" placeholder="Search future wants…" value={query} maxLength={200} onChange={(e) => { setQuery(e.target.value); setSelected(null); }} />
+              </label>
+              <select className="workbench-mobile-category" aria-label="Filter category" value={category} onChange={(e) => filter(e.target.value)}>
+                <option value="">All wants</option>
+                {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <select aria-label="Sort future wants" value={sort} onChange={(e) => { setSort(e.target.value); setOffset(0); setSelected(null); }}>
+                <option value="priority">High priority first</option>
+                <option value="newest">Recently added</option>
+                <option value="name">Name A–Z</option>
+              </select>
+            </div>
+            <div className="results-scroll" aria-busy={!ready}>
+              {!ready ? <p className="results-message" role="status">Loading future wants…</p> : completed.error ? (
+                <div className="empty-state" role="alert"><h2>Future Wants couldn’t load.</h2><p>{completed.error}</p><button className="button secondary" onClick={() => setRefresh((v) => v + 1)}>Try again</button></div>
+              ) : !result?.data.length ? (
+                <div className="empty-state">
+                  <h2>{search || category ? "No future wants found." : "A little room for possibility."}</h2>
+                  <p>{search || category ? "Try a different search or collection." : "Save something you’re considering, with a link or an estimated price."}</p>
+                  <button className="button secondary" disabled={!categories.length && !search && !category} onClick={() => {
+                    if (search || category) { setQuery(""); filter(""); } else setAdd(true);
+                  }}>{search || category ? "Clear filters" : "Add your first want"}</button>
                 </div>
-              </button>
-            );
-          })}
+              ) : (
+                <>
+                  <div className="register-columns wants-columns" aria-hidden="true"><span>Item</span><span>Collection</span><span>Estimated price</span><span>Priority</span></div>
+                  <ul className="collection-register wants-register" aria-label="Future wants">
+                    {result.data.map((item) => {
+                      const name = categories.find((c) => c.id === item.categoryId)?.name ?? "Other";
+                      const price = item.targetAmountMinor === null ? "Price not estimated" : formatMoney(item.targetAmountMinor, profile.currency);
+                      const priority = item.priority === 1 ? "High" : item.priority === 3 ? "Low" : "Medium";
+                      return <li key={item.id}>
+                        <button className="collection-register-row wants-register-row" aria-pressed={selected === item.id} aria-label={`${item.name}, ${name}, ${price}, ${priority} priority`} onClick={() => setSelected(item.id)}>
+                          <h2 className="register-name">{item.name}</h2>
+                          <span className="register-category">{name}</span>
+                          <span className="register-price" aria-label={price}>{item.targetAmountMinor === null ? "—" : price}</span>
+                          <span className="register-date">{priority}</span>
+                        </button>
+                      </li>;
+                    })}
+                  </ul>
+                </>
+              )}
+            </div>
+            <footer className="workbench-status">
+              <span className="collection-count" role="status">{!ready ? "Loading future wants…" : `${result?.total ?? 0} ${result?.total === 1 ? "want" : "wants"}`}</span>
+              {result && <WorkbenchPagination offset={offset} total={result.total} changePage={changePage} />}
+              <span className="status-hint">Estimated prices don’t count as spending.</span>
+            </footer>
+          </section>
         </div>
-      )}
-      {result && result.total > 12 && (
-        <div className="pagination">
-          <span>
-            {offset + 1}–{Math.min(offset + 12, result.total)} of {result.total}
-          </span>
-          <button
-            className="button secondary"
-            disabled={!offset}
-            onClick={() => setOffset((v) => v - 12)}
-          >
-            Previous
-          </button>
-          <button
-            className="button secondary"
-            disabled={offset + 12 >= result.total}
-            onClick={() => setOffset((v) => v + 12)}
-          >
-            Next
-          </button>
-        </div>
-      )}
-      {add && (
-        <AddWant
-          categories={categories}
-          profile={profile}
-          close={() => setAdd(false)}
-          saved={() => {
-            setAdd(false);
-            setOffset(0);
-            setRefresh((v) => v + 1);
-            setNotice("Saved to Future Wants.");
-          }}
-        />
-      )}
-    </>
+      </div>
+      {add && <AddWant categories={categories} categoryId={category} profile={profile} close={() => setAdd(false)} saved={() => {
+        setAdd(false);
+        setQuery("");
+        setSearch("");
+        setOffset(0);
+        setSelected(null);
+        setRefresh((v) => v + 1);
+        setNotice("Saved to Future Wants.");
+      }} />}
+    </div>
   );
 }

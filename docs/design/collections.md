@@ -5,11 +5,13 @@ The user accepted the Beats in Space-inspired direction: separate collection blo
 ## Design system
 
 - Pale lavender canvas `#f7f4fc`, lavender artwork `#eeebf4`, black ink `#111`, hover accent `#744e96`, with white text on the accent.
-- Arial/Helvetica throughout. Desktop heading about 56px, collection titles 36px, navigation 18px, item names 16px, purchase metadata 14px. Responsive headings shrink deliberately.
+- Arial/Helvetica for the app shell and grid. Desktop heading about 56px, collection titles 36px, navigation 18px, item names 16px, purchase metadata 14px. Responsive headings shrink deliberately. The compact collection list uses Menlo/Monaco monospace with uppercase text.
 - Full-width header and three equal navigation tabs. Main content has 30px desktop insets and 12px gutters.
 - Flat panels with 1px borders and square corners. Collection blocks and controls receive purple only on hover. Active tabs and selected controls use an underline; primary buttons, notices, and the Spending total stay neutral. Keyboard focus keeps its outline.
 - Three columns above 1100px, two through tablet sizes, one at 650px and below. Each populated block has a paired purchase preview; a single purchase gets an Add Item slot.
 - Footer actions: View collection and a category-specific Add Item button. Full collection browsing preserves search, sorting, filtering, grid/list views, and pagination.
+- Groceries is hidden from the Collections overview and category filter. Existing records, entry forms, and spending data are preserved.
+- List view follows the supplied list reference's compact rows without dividers or artwork and aligned item/collection/cost/date columns. The user's palette revision uses a white `#fff` surface and black `#000` text. Dates retain their year and missing prices/dates use an accessible dash. Rows open details and use the shared purple hover; keyboard focus follows the text color. At 650px and below, rows use two lines with name/cost above collection/date. Grid artwork is retained while the user evaluates the cover treatment.
 - Spending retains its existing monthly behavior with the same visual tokens. Future Wants uses the same tab shell and supports saved entries, details, estimated prices, product links, notes, and priority.
 
 ## Intentional differences from the generated concept
@@ -50,3 +52,5 @@ Remaining scope: actual item photo uploads and wishlist-to-purchase conversion/e
 The subsequent styling revision removes the persistent first-block/tab highlights and changes the hover accent to `#744e96`. Hover backgrounds use white text; category artwork retains its own neutral background and black symbols. Pointer hover is restricted to devices that support it.
 
 Revision validation: lint and diff checks passed. Browser checks confirmed neutral resting backgrounds, exact purple hover backgrounds with white text, and clearing the highlight when the pointer leaves. The existing collection, Spending, wishlist, and responsive checks passed at 1536px, 900px, and 390px. Screenshots are in `/tmp/inventory-hover-update`.
+
+The October 8 MySQL Workbench layout revision supersedes the active Collections overview/grid presentation. See [workbench.md](workbench.md) for the current layout, interaction contract, styling tokens, intentional reference adaptations, and verification results.

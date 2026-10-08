@@ -1,10 +1,16 @@
 import type {
   categories,
   items,
+  itemReviews,
   profiles,
   transactions,
 } from "../server/db/schema";
 export type Category = typeof categories.$inferSelect;
+export const starterCategories = ["Tech", "Clothes", "Hobbies", "Furniture", "Subscriptions", "Groceries", "Other"];
+export type ItemReview = typeof itemReviews.$inferSelect;
+export function isCollectionCategory(category: Pick<Category, "name">) {
+  return category.name.trim().toLowerCase() !== "groceries";
+}
 export type Profile = typeof profiles.$inferSelect;
 export type CollectionItem = typeof items.$inferSelect & {
   recordedCostMinor: string | null;
@@ -31,6 +37,7 @@ export type WantsResponse = {
 export type ItemDetail = {
   item: typeof items.$inferSelect;
   transactions: (typeof transactions.$inferSelect)[];
+  reviews: ItemReview[];
 };
 export function formatMoney(minor: string | number, currency: string) {
   // Intl formats the whole part from BigInt, so large totals stay exact.

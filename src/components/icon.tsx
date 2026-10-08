@@ -179,6 +179,7 @@ export function categoryIcon(name: string): IconName {
         Hobbies: "camera",
         Furniture: "chair",
         Groceries: "basket",
+        Subscriptions: "calendar",
       } as Record<string, IconName>
     )[name] ?? "box"
   );

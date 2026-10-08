@@ -46,7 +46,7 @@ const session = {
   expires_at: now + 3600,
   user,
 };
-const names = ["Tech", "Clothes", "Hobbies", "Furniture", "Groceries", "Other"];
+const names = ["Tech", "Clothes", "Hobbies", "Furniture", "Groceries", "Other", "Subscriptions"];
 const categories = names.map((name, i) => ({
   id: `b336ce88-ed8a-4e4b-8fa8-${String(i).padStart(12, "0")}`,
   userId,
@@ -72,23 +72,31 @@ const owned = examples.map(([name, amount, day], i) => ({
   acquiredOn: `2026-10-${String(day).padStart(2, "0")}`,
   purchasedOn: `2026-10-${String(day).padStart(2, "0")}`,
   recordedCostMinor: String(amount),
-  description: null,
+  description: i === 0 ? "Everyday headphones for work and travel." : null,
   targetAmountMinor: null,
   productUrl: null,
   priority: null,
 }));
 const overview = {
-  data: categories.map((category, i) => ({
+  data: categories.map((category) => ({
     category,
-    total: [12, 8, 14, 6, 0, 0][i],
+    total: owned.filter((item) => item.categoryId === category.id).length,
     latest: owned.filter((item) => item.categoryId === category.id),
   })),
 };
 const wants = [];
 const receipts = new Map();
 const submitted = [];
+const reviews = [];
+const reviewReceipts = new Map();
+const reviewSubmissions = [];
+let loseReviewResponse = true;
 let loseResponse = true;
 let overviewFailure = false;
+let failDetailId = null;
+let holdDetailId = null;
+let heldDetailRoute = null;
+let wantsFailure = false;
 const errors = [];
 const browser = await chromium.launch({
   headless: true,
@@ -169,23 +177,48 @@ await context.route("**/api/**", async (route) => {
     return route.fulfill({ json: { ...result, replayed: true } });
   }
   if (path === "/api/wants") {
+    if (wantsFailure) return route.fulfill({ status: 500, json: { error: "Fixture wishlist failure" } });
     const offset = Number(url.searchParams.get("offset") || 0);
+    const matches = wants.filter(item => (!url.searchParams.get("categoryId") || item.categoryId === url.searchParams.get("categoryId")) && item.name.toLowerCase().includes((url.searchParams.get("q") || "").toLowerCase()));
+    const sort = url.searchParams.get("sort");
+    if (sort === "name") matches.sort((a, b) => a.name.localeCompare(b.name));
+    else if (sort === "newest") matches.reverse();
+    else matches.sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
     return route.fulfill({
       json: {
-        data: wants.slice(offset, offset + 12),
-        total: wants.length,
+        data: matches.slice(offset, offset + 12),
+        total: matches.length,
         limit: 12,
         offset,
       },
     });
   }
+  if (path.endsWith("/reviews") && request.method() === "POST") {
+    const itemId = path.split("/").at(-2);
+    const body = request.postDataJSON();
+    const key = request.headers()["idempotency-key"];
+    assert.ok(key);
+    reviewSubmissions.push({ key, body, itemId });
+    if (reviewReceipts.has(key)) return route.fulfill({ json: { review: reviewReceipts.get(key), replayed: true } });
+    const review = { id: `review-${reviews.length}`, userId, itemId, ...body, createdAt: new Date().toISOString() };
+    reviews.unshift(review);
+    reviewReceipts.set(key, review);
+    if (loseReviewResponse) {
+      loseReviewResponse = false;
+      return route.fulfill({ status: 500, json: { error: "Review saved, but fixture response was lost. Try again." } });
+    }
+    return route.fulfill({ status: 201, json: { review, replayed: false } });
+  }
   if (path.startsWith("/api/items/")) {
     const id = path.split("/").at(-1);
     const item = [...owned, ...wants].find((item) => item.id === id);
     assert.ok(item);
+    if (id === holdDetailId) { heldDetailRoute = route; return; }
+    if (id === failDetailId) return route.fulfill({ status: 500, json: { error: "Fixture item failure" } });
     return route.fulfill({
       json: {
         item,
+        reviews: reviews.filter(review => review.itemId === id),
         transactions:
           item.state === "wishlist"
             ? []
@@ -195,6 +228,8 @@ await context.route("**/api/**", async (route) => {
                   amountMinor: Number(item.recordedCostMinor),
                   currency: "USD",
                   occurredOn: item.purchasedOn,
+                  merchant: "Local electronics store",
+                  note: "Kept the receipt for warranty.",
                 },
               ],
       },
@@ -264,67 +299,104 @@ async function noOverflow() {
 }
 try {
   await page.goto(baseUrl);
-  await page.getByRole("heading", { name: "Tech", exact: true }).waitFor();
+  const tree = page.getByRole("navigation", { name: "Collection navigation" });
+  const list = page.getByRole("list", { name: "Collection items" });
+  const inspector = page.getByRole("region", { name: "Item details" });
+  await list.getByRole("heading", { name: "Everyday headphones", exact: true }).waitFor();
   assert.equal(await page.title(), "Inventory");
-  assert.equal(await page.locator(".collection-block").count(), 6);
-  assert.equal(
-    await page
-      .getByRole("region", { name: "Tech collection" })
-      .locator(".purchase-preview")
-      .count(),
-    2,
-  );
-  assert.equal(
-    await page
-      .getByRole("region", { name: "Furniture collection" })
-      .locator(".next-purchase")
-      .count(),
-    1,
-  );
-  assert.equal(
-    await nav
-      .getByRole("button", { name: "Collections", exact: true })
-      .getAttribute("aria-current"),
-    "page",
-  );
+  assert.equal(await tree.getByRole("button").count(), 7);
+  await tree.getByRole("button", { name: /Subscriptions/ }).waitFor();
+  assert.equal(await tree.getByRole("button", { name: /Groceries/ }).count(), 0);
+  assert.equal(await nav.getByRole("button", { name: "Collections", exact: true }).getAttribute("aria-current"), "page");
   await noOverflow();
+  await list.getByRole("button", { name: /Everyday headphones/ }).click();
+  await inspector.getByRole("heading", { name: "Everyday headphones", exact: true }).waitFor();
+  assert.equal(await list.getByRole("button", { name: /Everyday headphones/ }).getAttribute("aria-pressed"), "true");
+  assert.equal(await page.getByRole("dialog").count(), 0, "Collection details must render inline");
+  await inspector.getByText("$199.00", { exact: true }).waitFor();
+  await inspector.getByText("Local electronics store", { exact: true }).waitFor();
+  await inspector.getByText("Kept the receipt for warranty.", { exact: true }).waitFor();
+  const worth = inspector.getByRole("region", { name: "Worth it?" });
+  await worth.getByRole("button", { name: "Review this item" }).click();
+  await worth.getByRole("combobox", { name: /^Verdict/ }).selectOption("worth_it");
+  await worth.getByLabel("How often do you use it?").selectOption("daily");
+  await worth.getByLabel("Would you buy it again?").selectOption("yes");
+  await worth.getByLabel("Why?", { exact: false }).fill("Useful for work and travel.");
+  await worth.getByRole("button", { name: "Save check-in" }).click();
+  await worth.getByRole("alert").getByText("Review saved, but fixture response was lost. Try again.").waitFor();
+  await worth.getByRole("button", { name: "Save check-in" }).click();
+  await worth.getByText("Check-in saved.", { exact: true }).waitFor();
+  assert.equal(reviews.length, 1);
+  assert.equal(reviewSubmissions[0].key, reviewSubmissions[1].key);
+  await worth.getByText("Worth it", { exact: true }).waitFor();
+  await worth.getByRole("button", { name: "Add check-in" }).click();
+  await worth.getByRole("combobox", { name: /^Verdict/ }).selectOption("not_worth_it");
+  await worth.getByLabel("How often do you use it?").selectOption("rarely");
+  await worth.getByLabel("Would you buy it again?").selectOption("no");
+  await worth.getByLabel("Why?", { exact: false }).fill("I use them less now.");
+  await worth.getByRole("button", { name: "Save check-in" }).click();
+  await worth.getByText("Not worth it", { exact: true }).waitFor();
+  assert.equal(reviews.length, 2);
+  assert.notEqual(reviewSubmissions[2].key, reviewSubmissions[1].key);
+  await worth.getByText("Earlier check-ins (1)", { exact: true }).click();
+  await worth.getByText("Useful for work and travel.", { exact: true }).waitFor();
+  await noOverflow();
+  await page.locator(".inspector-scroll").evaluate(element => { element.scrollTop = 0; });
   await page.screenshot({ path: `${evidence}/collections-desktop.png` });
-  await page
-    .getByRole("region", { name: "Tech collection" })
-    .getByRole("button", { name: /Everyday headphones/ })
-    .click();
-  await page
-    .getByRole("dialog", { name: "Item details" })
-    .getByRole("heading", { name: "Everyday headphones" })
-    .waitFor();
-  await page.getByRole("button", { name: "Close dialog" }).click();
-  await page
-    .getByRole("region", { name: "Clothes collection" })
-    .getByRole("button", { name: "View collection" })
-    .click();
-  await page.getByRole("textbox", { name: "Search your collection" }).waitFor();
-  await page
-    .getByRole("textbox", { name: "Search your collection" })
-    .fill("Navy");
-  await page
-    .getByRole("heading", { name: "Navy jacket", exact: true })
-    .waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await worth.getByRole("button", { name: "Add check-in" }).click();
+  await worth.getByRole("button", { name: "Save check-in" }).scrollIntoViewIfNeeded();
+  await noOverflow();
+  await page.screenshot({ path: `${evidence}/review-mobile.png`, fullPage: true });
+  await worth.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.setViewportSize({ width: 1536, height: 1024 });
+  // A failed item request stays inside the inspector and can be retried.
+  failDetailId = owned[1].id;
+  await list.getByRole("button", { name: /Mechanical keyboard/ }).click();
+  await inspector.getByRole("alert").getByText("Fixture item failure").waitFor();
+  failDetailId = null;
+  await inspector.getByRole("button", { name: "Try again" }).click();
+  await inspector.getByRole("heading", { name: "Mechanical keyboard", exact: true }).waitFor();
+  // Switching rows while an item is loading must not display its late response.
+  holdDetailId = owned[0].id;
+  await list.getByRole("button", { name: /Everyday headphones/ }).click();
+  await page.waitForFunction(() => document.querySelector(".inspector-scroll")?.textContent?.includes("Loading item"));
+  const detailDeadline = Date.now() + 5000;
+  while (!heldDetailRoute) {
+    assert.ok(Date.now() < detailDeadline, "Held detail request did not start");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  await list.getByRole("button", { name: /Navy jacket/ }).click();
+  await inspector.getByRole("heading", { name: "Navy jacket", exact: true }).waitFor();
+  await heldDetailRoute.fulfill({ json: { item: owned[0], transactions: [], reviews: [] } }).catch(() => {});
+  holdDetailId = null;
+  assert.equal(await inspector.getByRole("heading", { name: "Everyday headphones", exact: true }).count(), 0);
+  await list.getByRole("button", { name: /Mechanical keyboard/ }).click();
+  await inspector.getByRole("heading", { name: "Mechanical keyboard", exact: true }).waitFor();
+  assert.equal(await inspector.getByRole("heading", { name: "Everyday headphones", exact: true }).count(), 0);
+  await page.getByRole("button", { name: "Close item details" }).click();
+  await inspector.getByRole("heading", { name: "Select an item" }).waitFor();
+  await page.getByRole("textbox", { name: "Filter collections" }).fill("clo");
+  assert.equal(await tree.getByRole("button").count(), 2);
+  await tree.getByRole("button", { name: /Clothes/ }).click();
+  await page.getByRole("textbox", { name: "Filter collections" }).fill("");
+  await list.getByRole("heading", { name: "Navy jacket", exact: true }).waitFor();
+  assert.equal(await list.getByRole("button").count(), 2);
+  await list.getByRole("button", { name: /Navy jacket/ }).click();
+  await inspector.getByRole("heading", { name: "Navy jacket", exact: true }).waitFor();
+  await page.getByRole("textbox", { name: "Search your collection" }).fill("Navy");
+  await inspector.getByRole("heading", { name: "Select an item" }).waitFor();
+  await page.waitForFunction(() => document.querySelector(".collection-count")?.textContent === "1 item");
   await page.getByRole("button", { name: "Add item", exact: true }).click();
-  assert.equal(
-    await page.locator("select[name=category]").inputValue(),
-    categories[1].id,
-  );
+  assert.equal(await page.locator("select[name=category]").inputValue(), categories[1].id);
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await nav.getByRole("button", { name: "Collections", exact: true }).click();
-  await page.getByRole("heading", { name: "Tech", exact: true }).waitFor();
-  await page
-    .getByRole("region", { name: "Groceries collection" })
-    .getByRole("button", { name: "Add item to Groceries", exact: true })
-    .click();
-  assert.equal(
-    await page.locator("select[name=category]").inputValue(),
-    categories[4].id,
-  );
+  await tree.getByRole("button", { name: /Subscriptions/ }).click();
+  await page.getByRole("button", { name: "Add item", exact: true }).click();
+  assert.equal(await page.locator("select[name=category]").inputValue(), categories[6].id);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await tree.getByRole("button", { name: /Other/ }).click();
+  await page.getByRole("button", { name: "Add item", exact: true }).click();
+  assert.equal(await page.locator("select[name=category]").inputValue(), categories[5].id);
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await nav.getByRole("button", { name: "Spending", exact: true }).click();
   await page.getByText("$523.00", { exact: true }).waitFor();
@@ -358,15 +430,18 @@ try {
   assert.equal(submitted[0].key, submitted[1].key);
   await page.getByRole("button", { name: /Future headphones/ }).click();
   await page
-    .getByRole("dialog", { name: "Item details" })
+    .getByRole("region", { name: "Item details" })
     .getByText("$150.00 estimated", { exact: true })
     .waitFor();
   assert.equal(
     await page.getByRole("link", { name: "View product" }).getAttribute("href"),
     "https://example.com/headphones",
   );
-  await page.getByRole("button", { name: "Close dialog" }).click();
+  assert.equal(await page.getByRole("dialog").count(), 0);
+  await page.getByRole("region", { name: "Item details" }).getByText("Consider after a month.", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("region", { name: "Worth it?" }).count(), 0);
   await page.screenshot({ path: `${evidence}/wants-desktop.png` });
+  await page.getByRole("button", { name: "Close item details" }).click();
   await page.reload();
   await nav.getByRole("button", { name: "Future Wants", exact: true }).click();
   await page
@@ -377,6 +452,9 @@ try {
       ...wants[0],
       id: `wishlist-page-${index}`,
       name: `Candidate ${index}`,
+      categoryId: index === 12 ? categories[3].id : categories[0].id,
+      priority: index === 12 ? 3 : 1,
+      targetAmountMinor: index === 12 ? null : 15000,
     });
   await nav.getByRole("button", { name: "Collections", exact: true }).click();
   await nav.getByRole("button", { name: "Future Wants", exact: true }).click();
@@ -384,47 +462,83 @@ try {
   await page
     .getByRole("heading", { name: "Candidate 12", exact: true })
     .waitFor();
-  assert.equal(await page.locator(".wants-grid .item-card").count(), 1);
+  assert.equal(await page.locator(".wants-register-row").count(), 1);
   await page.getByRole("button", { name: "Previous", exact: true }).click();
   await page
     .getByRole("heading", { name: "Future headphones", exact: true })
     .waitFor();
-  assert.equal(await page.locator(".wants-grid .item-card").count(), 12);
+  assert.equal(await page.locator(".wants-register-row").count(), 12);
+  const wantsList = page.getByRole("list", { name: "Future wants" });
+  const wantsInspector = page.getByRole("region", { name: "Item details" });
+  await tree.getByRole("button", { name: /Furniture/ }).click();
+  await wantsList.getByRole("heading", { name: "Candidate 12", exact: true }).waitFor();
+  assert.equal(await wantsList.getByRole("button").count(), 1);
+  await wantsList.getByRole("button", { name: /Candidate 12/ }).click();
+  await wantsInspector.getByText("Price not estimated", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Add want", exact: true }).click();
+  assert.equal(await page.locator("select[name=category]").inputValue(), categories[3].id);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await tree.getByRole("button", { name: /All wants/ }).click();
+  await page.getByRole("textbox", { name: "Search future wants" }).fill("candidate 12");
+  await page.waitForFunction(() => document.querySelector(".collection-count")?.textContent === "1 want");
+  await wantsList.getByRole("heading", { name: "Candidate 12", exact: true }).waitFor();
+  await page.getByRole("textbox", { name: "Search future wants" }).fill("");
+  await page.getByRole("combobox", { name: "Sort future wants" }).selectOption("name");
+  await page.waitForFunction(() => document.querySelector(".collection-count")?.textContent === "13 wants");
+  await wantsList.getByRole("heading", { name: "Candidate 1", exact: true }).waitFor();
+  assert.equal(await wantsList.locator(".register-name").first().textContent(), "Candidate 1");
+  await page.getByRole("combobox", { name: "Sort future wants" }).selectOption("priority");
+  await wantsList.getByRole("heading", { name: "Future headphones", exact: true }).waitFor();
+  await wantsList.getByRole("button", { name: /Future headphones/ }).click();
+  await wantsInspector.getByRole("heading", { name: "Future headphones", exact: true }).waitFor();
+  await noOverflow();
+  await page.screenshot({ path: `${evidence}/wants-desktop.png` });
+  await page.setViewportSize({ width: 900, height: 1000 });
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  assert.equal(await page.locator(".space-header").count(), 1);
+  await noOverflow();
+  await page.screenshot({ path: `${evidence}/wants-tablet.png` });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("combobox", { name: "Filter category" }).selectOption(categories[3].id);
+  await wantsList.getByRole("heading", { name: "Candidate 12", exact: true }).waitFor();
+  await wantsList.getByRole("button", { name: /Candidate 12/ }).click();
+  await wantsInspector.getByText("Price not estimated", { exact: true }).waitFor();
+  await noOverflow();
+  await page.screenshot({ path: `${evidence}/wants-mobile.png`, fullPage: true });
+  await page.setViewportSize({ width: 1536, height: 1024 });
+  await tree.getByRole("button", { name: /All wants/ }).click();
+  await page.getByRole("textbox", { name: "Search future wants" }).fill("no such want");
+  await page.getByRole("heading", { name: "No future wants found." }).waitFor();
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+  await wantsList.getByRole("heading", { name: "Future headphones", exact: true }).waitFor();
+  wantsFailure = true;
+  await page.getByRole("combobox", { name: "Sort future wants" }).selectOption("newest");
+  await page.getByRole("alert").getByText("Fixture wishlist failure").waitFor();
+  wantsFailure = false;
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await wantsList.getByRole("heading", { name: "Candidate 12", exact: true }).waitFor();
   wants.splice(1);
   await nav.getByRole("button", { name: "Spending", exact: true }).click();
   await page.getByText("$523.00", { exact: true }).waitFor();
   overviewFailure = true;
   await nav.getByRole("button", { name: "Collections", exact: true }).click();
-  await page
-    .getByRole("heading", { name: "Collections couldn’t load." })
-    .waitFor();
+  await page.getByRole("textbox", { name: "Search your collection" }).fill("");
+  await tree.getByRole("button", { name: /All items/ }).click();
+  await list.getByRole("heading", { name: "Everyday headphones", exact: true }).waitFor();
   overviewFailure = false;
-  await page.getByRole("button", { name: "Try again", exact: true }).click();
-  await page.getByRole("heading", { name: "Tech", exact: true }).waitFor();
+  // Unavailable optional sidebar counts must not block the item workspace.
   await page.setViewportSize({ width: 900, height: 1000 });
-  assert.equal(
-    await page
-      .locator(".collection-blocks")
-      .evaluate(
-        (el) => getComputedStyle(el).gridTemplateColumns.split(" ").length,
-      ),
-    2,
-  );
   await noOverflow();
+  await page.screenshot({ path: `${evidence}/collections-tablet.png` });
   await page.setViewportSize({ width: 390, height: 844 });
-  assert.equal(
-    await page
-      .locator(".collection-blocks")
-      .evaluate(
-        (el) => getComputedStyle(el).gridTemplateColumns.split(" ").length,
-      ),
-    1,
-  );
+  const mobileCategory = page.getByRole("combobox", { name: "Filter category" });
+  await mobileCategory.selectOption(categories[0].id);
+  await page.waitForFunction(() => document.querySelector(".collection-count")?.textContent === "2 items");
+  await list.getByRole("button", { name: /Everyday headphones/ }).click();
+  await inspector.getByRole("heading", { name: "Everyday headphones", exact: true }).waitFor();
+  assert.equal(await mobileCategory.locator("option", { hasText: "Groceries" }).count(), 0);
   await noOverflow();
-  await page.screenshot({
-    path: `${evidence}/collections-mobile.png`,
-    fullPage: true,
-  });
+  await page.screenshot({ path: `${evidence}/collections-mobile.png`, fullPage: true });
   await nav.getByRole("button", { name: "Future Wants", exact: true }).click();
   await page
     .getByRole("heading", { name: "Future headphones", exact: true })
@@ -449,7 +563,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    `PASS collection previews, drill-down/search, category-aware add, Spending, saved wants/reload, retry key reuse, error recovery, 1536/900/390px layout; screenshots: ${evidence}`,
+    `PASS subscription category selectors, review save/history/lost-response retry, mobile review form, wishlist exclusion, workbench selection and inline details, sidebar and mobile filtering, search, category-aware add, Spending, saved wants/reload, retry key reuse, optional-count failure, 1536/900/390px layout; screenshots: ${evidence}`,
   );
 } catch (error) {
   await page.screenshot({ path: `${evidence}/failure.png`, fullPage: true });

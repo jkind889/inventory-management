@@ -1,6 +1,6 @@
 # Collection app: data model and first build
 
-Status: backend foundation, sign-in, collection interface, and a read-only monthly Spending view are implemented. See README.md for tested endpoints and setup. Collections now has an editorial category overview with two recent purchased items per category, and Future Wants supports persistent wishlist creation and browsing. Spending includes category totals, date-filtered pagination, and linked item details; standalone expense entry, photos, wishlist-to-purchase conversion, refunds/sales, subscriptions, and check-ins remain future slices.
+Status: backend foundation, sign-in, collection interface, and a read-only monthly Spending view are implemented. See README.md for tested endpoints and setup. Collections now has an editorial category overview with two recent purchased items per category, and Future Wants supports persistent wishlist creation and browsing. Spending includes category totals, date-filtered pagination, and linked item details; standalone expense entry, photos, wishlist-to-purchase conversion, refunds/sales, recurring subscription billing, and suggested check-in dates remain future slices. Subscriptions is now a starter category; persistent item value check-ins are implemented as described in [item-worth.md](item-worth.md).
 
 ## Product scope
 
@@ -17,11 +17,12 @@ Use UUID identifiers. User-owned tables carry `user_id` referencing Supabase Aut
 | Table | Main fields | Purpose |
 | --- | --- | --- |
 | profiles | user_id, display_name, currency, timezone | Preferences; Auth remains the source of identity. |
-| categories | id, user_id, name, archived_at | Seed Tech, Clothes, Hobbies, Furniture, Groceries, and Other per user; allow changes. |
+| categories | id, user_id, name, archived_at | Seed Tech, Clothes, Hobbies, Furniture, Subscriptions, Groceries, and Other per user; allow changes. |
 | items | id, user_id, category_id, name, description, state, acquired_on, condition, product_url, target_amount_minor, priority, archived_at | One record per separately tracked possession or wishlist candidate. |
 | transactions | id, user_id, category_id, item_id?, subscription_id?, refund_of_id?, kind, amount_minor, currency, occurred_on, merchant?, note?, billing_period_on? | Confirmed expenses, refunds, and sale proceeds. An entry may reference an item, a subscription, or neither, but not both. |
 | subscriptions | id, user_id, category_id, name, amount_minor, currency, interval_unit, interval_count, billing_anchor_on, next_due_on, status, ends_on?, service_url?, archived_at | Recurrence rules and expected prices. Confirmed charges remain separate transaction records. |
-| check_ins | id, user_id, item_id?, subscription_id?, checked_on, usage, satisfaction, would_buy_again?, keep_subscription?, note? | Dated reflections linked to exactly one item or subscription. |
+| item_reviews (implemented) | id, user_id, item_id, verdict, usage_frequency?, would_buy_again?, note?, created_at | Append-only item value check-ins; latest 20 shown in details. |
+| check_ins (future extension) | id, user_id, item_id?, subscription_id?, checked_on, usage, satisfaction, would_buy_again?, keep_subscription?, note? | Dated reflections linked to exactly one item or subscription. |
 | item_photos | id, user_id, item_id, storage_path, sort_order | Private Storage objects, with the first image used as the cover. |
 | operations | id, user_id, idempotency_key, operation_type, request_hash, result_reference | Prevent duplicate compound writes when the client retries. |
 
@@ -48,7 +49,7 @@ Show subscriptions due for confirmation when the app opens. Confirming a charge 
 
 Calculate recurrence from the original billing anchor, clamping short months without permanent date drift: a January 31 monthly anchor gives February's last day, then March 31. Price edits affect future expectations; past confirmed charges retain their recorded amounts. Cancelled subscriptions stop producing future expected charges after their recorded effective end date.
 
-Start check-ins with usage (`often`, `sometimes`, `rarely`, `not_yet`), satisfaction (1–5), and an optional yes/no/unsure recommendation. Subscriptions get a keep/cancel/unsure answer. Calculate suggested check-ins from acquisition dates and the latest reflection when opening the app; a background scheduler is unnecessary for this initial behavior.
+The initial item check-in records a verdict (`worth_it`, `not_worth_it`, `unsure`), optional usage (`daily`, `weekly`, `monthly`, `rarely`, `never`), and an optional yes/no/unsure repurchase answer. Satisfaction ratings can be added later. Subscriptions get a keep/cancel/unsure answer. Calculate suggested check-ins from acquisition dates and the latest reflection when opening the app; a background scheduler is unnecessary for this initial behavior.
 
 Show these answers separately. Do not calculate cost per use from a qualitative usage answer, or invent a universal value score.
 

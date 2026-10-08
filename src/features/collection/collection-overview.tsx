@@ -7,6 +7,7 @@ import { CategoryArtwork } from "@/components/category-artwork";
 import {
   formatDate,
   formatMoney,
+  isCollectionCategory,
   type CollectionOverview,
   type Profile,
 } from "@/shared/collection";
@@ -70,7 +71,7 @@ export function CollectionOverviewScreen({
           role="status"
           aria-label="Loading collections"
         >
-          {[0, 1, 2, 3, 4, 5].map((i) => (
+          {[0, 1, 2, 3, 4].map((i) => (
             <div key={i} className="skeleton" />
           ))}
         </div>
@@ -87,87 +88,89 @@ export function CollectionOverviewScreen({
         </div>
       ) : (
         <div className="collection-blocks">
-          {completed.result?.data.map(({ category, total, latest }) => (
-            <section
-              className="collection-block"
-              key={category.id}
-              aria-label={`${category.name} collection`}
-            >
-              <div className="block-body">
-                <header className="block-heading">
-                  <h2>{category.name}</h2>
-                  <span>
-                    {total} {total === 1 ? "item" : "items"}
-                  </span>
-                </header>
-                <p className="block-date">
-                  {latest[0]
-                    ? `Latest purchase · ${formatDate(latest[0].purchasedOn)}`
-                    : "No purchases yet"}
-                </p>
-                {latest.length ? (
-                  <div className="purchase-pair">
-                    {latest.map((item) => (
+          {completed.result?.data
+            .filter(({ category }) => isCollectionCategory(category))
+            .map(({ category, total, latest }) => (
+              <section
+                className="collection-block"
+                key={category.id}
+                aria-label={`${category.name} collection`}
+              >
+                <div className="block-body">
+                  <header className="block-heading">
+                    <h2>{category.name}</h2>
+                    <span>
+                      {total} {total === 1 ? "item" : "items"}
+                    </span>
+                  </header>
+                  <p className="block-date">
+                    {latest[0]
+                      ? `Latest purchase · ${formatDate(latest[0].purchasedOn)}`
+                      : "No purchases yet"}
+                  </p>
+                  {latest.length ? (
+                    <div className="purchase-pair">
+                      {latest.map((item) => (
+                        <button
+                          className="purchase-preview"
+                          key={item.id}
+                          onClick={() => openItem(item.id)}
+                        >
+                          <CategoryArtwork category={category.name} />
+                          <h3>{item.name}</h3>
+                          <p>
+                            {item.recordedCostMinor === null
+                              ? "Price not recorded"
+                              : formatMoney(
+                                  item.recordedCostMinor,
+                                  profile.currency,
+                                )}{" "}
+                            · {formatDate(item.purchasedOn)}
+                          </p>
+                        </button>
+                      ))}
+                      {latest.length === 1 && (
+                        <button
+                          className="next-purchase"
+                          onClick={() => addItem(category.id)}
+                        >
+                          <span>
+                            <Icon name="plus" size={38} />
+                          </span>
+                          <p>Your next purchase</p>
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="block-empty">
+                      <Icon name={categoryIcon(category.name)} size={54} />
+                      <p>
+                        {total
+                          ? "Your items are here. No purchases recorded yet."
+                          : "No purchases yet"}
+                      </p>
                       <button
-                        className="purchase-preview"
-                        key={item.id}
-                        onClick={() => openItem(item.id)}
-                      >
-                        <CategoryArtwork category={category.name} />
-                        <h3>{item.name}</h3>
-                        <p>
-                          {item.recordedCostMinor === null
-                            ? "Price not recorded"
-                            : formatMoney(
-                                item.recordedCostMinor,
-                                profile.currency,
-                              )}{" "}
-                          · {formatDate(item.purchasedOn)}
-                        </p>
-                      </button>
-                    ))}
-                    {latest.length === 1 && (
-                      <button
-                        className="next-purchase"
+                        className="button secondary"
                         onClick={() => addItem(category.id)}
                       >
-                        <span>
-                          <Icon name="plus" size={38} />
-                        </span>
-                        <p>Your next purchase</p>
+                        Add item <Icon name="plus" size={16} />
                       </button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="block-empty">
-                    <Icon name={categoryIcon(category.name)} size={54} />
-                    <p>
-                      {total
-                        ? "Your items are here. No purchases recorded yet."
-                        : "No purchases yet"}
-                    </p>
-                    <button
-                      className="button secondary"
-                      onClick={() => addItem(category.id)}
-                    >
-                      Add item <Icon name="plus" size={16} />
-                    </button>
-                  </div>
-                )}
-              </div>
-              <footer className="block-footer">
-                <button onClick={() => openCollection(category.id)}>
-                  View collection <Icon name="arrow" size={20} />
-                </button>
-                <button
-                  aria-label={`Add item to ${category.name}`}
-                  onClick={() => addItem(category.id)}
-                >
-                  <Icon name="plus" size={20} />
-                </button>
-              </footer>
-            </section>
-          ))}
+                    </div>
+                  )}
+                </div>
+                <footer className="block-footer">
+                  <button onClick={() => openCollection(category.id)}>
+                    View collection <Icon name="arrow" size={20} />
+                  </button>
+                  <button
+                    aria-label={`Add item to ${category.name}`}
+                    onClick={() => addItem(category.id)}
+                  >
+                    <Icon name="plus" size={20} />
+                  </button>
+                </footer>
+              </section>
+            ))}
         </div>
       )}
     </>

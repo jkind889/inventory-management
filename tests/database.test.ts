@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { createDatabase, withUser } from "../src/server/db/client";
 import { createInventoryService } from "../src/server/services/inventory";
-import { categories, items, operations, profiles, transactions } from "../src/server/db/schema";
+import { categories, itemReviews, items, operations, profiles, transactions } from "../src/server/db/schema";
 import { createApi } from "../src/server/api/app";
 import { verifyToken } from "../src/server/api/auth";
 
@@ -38,9 +38,10 @@ describe.skipIf(!enabled)("local Postgres integration", () => {
     }
     if (connection) await connection.close();
   });
-  it("bootstraps one profile and six categories without resetting preferences", async () => {
+  it("bootstraps one profile and seven categories without resetting preferences", async () => {
     await service.bootstrap(userA, { currency: "EUR", timezone: "UTC" });
-    expect(await service.categories(userA)).toHaveLength(6);
+    expect(await service.categories(userA)).toHaveLength(7);
+    expect((await service.categories(userA)).filter(category => category.name === "Subscriptions")).toHaveLength(1);
     const result = await withUser(connection.db, userA, tx => tx.select().from(profiles));
     expect(result).toHaveLength(1); expect(result[0].currency).toBe("USD");
   });
@@ -204,13 +205,13 @@ describe.skipIf(!enabled)("local Postgres integration", () => {
     const first = await service.addWant(userA, key, input);
     const retries = await Promise.all([service.addWant(userA, key, input), service.addWant(userA, key, input)]);
     expect(retries.every(row => row.replayed && row.item.id === first.item.id)).toBe(true);
-    expect((await service.wants(userA, 12, 0)).data).toHaveLength(1);
+    expect((await service.wants(userA, { limit: 12, offset: 0, q: "", sort: "priority" })).data).toHaveLength(1);
     expect(first.item).toMatchObject({ state: "wishlist", targetAmountMinor: 15000, productUrl: input.productUrl, priority: 1, acquiredOn: null });
     expect((await service.itemDetail(userA, first.item.id)).transactions).toHaveLength(0);
     expect((await service.spending(userA, "2026-01-01", "2026-12-31")).grossSpendingMinor).toBe(before.grossSpendingMinor);
     expect((await service.collection(userA, { q: "", sort: "newest", limit: 100, offset: 0 })).total).toBe(owned);
-    expect((await service.wants(userA, 12, 1)).data).toHaveLength(0);
-    expect((await service.wants(userB, 12, 0)).total).toBe(0);
+    expect((await service.wants(userA, { limit: 12, offset: 1, q: "", sort: "priority" })).data).toHaveLength(0);
+    expect((await service.wants(userB, { limit: 12, offset: 0, q: "", sort: "priority" })).total).toBe(0);
     await expect(service.itemDetail(userB, first.item.id)).rejects.toMatchObject({ status: 404 });
     await expect(service.addWant(userA, key, { ...input, priority: 2 })).rejects.toMatchObject({ status: 409 });
     await expect(service.existingItem(userA, key, { name: input.name, categoryId: categoryA, description: null, acquiredOn: null })).rejects.toMatchObject({ status: 409 });
@@ -223,17 +224,45 @@ describe.skipIf(!enabled)("local Postgres integration", () => {
     expect(simultaneous[0].item.id).toBe(simultaneous[1].item.id);
     expect(simultaneous.map(row => row.replayed).sort()).toEqual([false, true]);
     const failedKey = randomUUID();
-    const total = (await service.wants(userA, 100, 0)).total;
+    const total = (await service.wants(userA, { limit: 100, offset: 0, q: "", sort: "priority" })).total;
     await expect(service.addWant(userA, failedKey, { ...input, name: " " })).rejects.toBeDefined();
-    expect((await service.wants(userA, 100, 0)).total).toBe(total);
+    expect((await service.wants(userA, { limit: 100, offset: 0, q: "", sort: "priority" })).total).toBe(total);
     expect(await withUser(connection.db, userA, tx => tx.select().from(operations).where(eq(operations.idempotencyKey, failedKey)))).toHaveLength(0);
     expect((await service.addWant(userA, failedKey, input)).replayed).toBe(false);
     await expect(service.addWant(userA, randomUUID(), { ...input, categoryId: categoryB })).rejects.toMatchObject({ status: 422 });
     const b = await service.addWant(userB, key, { ...input, categoryId: categoryB });
     expect(b.item.id).not.toBe(simultaneous[0].item.id);
-    const ordered = (await service.wants(userA, 100, 0)).data;
+    const ordered = (await service.wants(userA, { limit: 100, offset: 0, q: "", sort: "priority" })).data;
     expect(ordered[0].priority).toBe(1);
     expect(ordered.at(-1)!.priority).toBe(3);
+  });
+  it("filters the complete wishlist before paging and sorting, while isolating owners", async () => {
+    const [category] = await withUser(connection.db, userA, tx => tx.insert(categories).values({ userId: userA, name: "Wishlist workbench" }).returning());
+    for (let index = 0; index < 14; index++) {
+      await service.addWant(userA, randomUUID(), {
+        name: `Workbench ${String(index).padStart(2, "0")}`,
+        categoryId: category.id,
+        priority: index === 13 ? 1 : 3,
+        targetAmountMinor: index === 13 ? 0 : null,
+        productUrl: null,
+        description: null,
+      });
+    }
+    const input = { limit: 12, offset: 0, q: "WORKBENCH", categoryId: category.id, sort: "priority" as const };
+    const first = await service.wants(userA, input);
+    expect(first.total).toBe(14);
+    expect(first.data).toHaveLength(12);
+    expect(first.data[0]).toMatchObject({ name: "Workbench 13", targetAmountMinor: 0 });
+    const alphabetical = await service.wants(userA, { ...input, sort: "name", offset: 12 });
+    expect(alphabetical.total).toBe(14);
+    expect(alphabetical.data.map(item => item.name)).toEqual(["Workbench 12", "Workbench 13"]);
+    const match = await service.wants(userA, { ...input, q: "13" });
+    expect(match.total).toBe(1);
+    expect(match.data[0].name).toBe("Workbench 13");
+    expect((await service.wants(userA, { ...input, categoryId: categoryB })).total).toBe(0);
+    expect((await service.wants(userB, input)).total).toBe(0);
+    expect((await service.wants(userA, { ...input, q: "%" })).total).toBe(0);
+    expect((await service.wants(userA, { ...input, sort: "newest", limit: 1 })).data[0].name).toBe("Workbench 13");
   });
   it("verifies a real Supabase Auth session through Hono and Drizzle", async () => {
     const authUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -259,5 +288,53 @@ describe.skipIf(!enabled)("local Postgres integration", () => {
     expect((await (await api.request("/api/wants", { headers })).json()).total).toBe(1);
     expect((await (await api.request("/api/spending/summary?from=2026-10-01&to=2026-10-31", { headers })).json()).grossSpendingMinor).toBe("19999");
     await auth.auth.signOut();
+  });
+  it("adds subscriptions to existing profiles and tolerates concurrent bootstrap retries", async () => {
+    await admin`delete from app.categories where user_id = ${userB} and name = 'Subscriptions'`;
+    await Promise.all([service.bootstrap(userB, { currency: "EUR", timezone: "UTC" }), service.bootstrap(userB, { currency: "EUR", timezone: "UTC" })]);
+    expect((await service.categories(userB)).filter(category => category.name === "Subscriptions")).toHaveLength(1);
+    expect((await service.bootstrap(userB, { currency: "EUR", timezone: "UTC" })).profile.currency).toBe("USD");
+  });
+  it("saves review history once on concurrent/sequential retries without affecting spending", async () => {
+    const { item } = await service.existingItem(userA, randomUUID(), { name: "Review fixture", categoryId: categoryA, acquiredOn: null, description: null });
+    const input = { verdict: "worth_it" as const, usageFrequency: "daily" as const, wouldBuyAgain: true, note: "Useful every day" };
+    const before = (await service.spending(userA, "2026-10-01", "2026-10-31")).grossSpendingMinor;
+    const key = randomUUID();
+    const results = await Promise.all([service.addItemReview(userA, item.id, key, input), service.addItemReview(userA, item.id, key, input)]);
+    expect(results[0].review.id).toBe(results[1].review.id);
+    expect(results.map(result => result.replayed).sort()).toEqual([false, true]);
+    expect((await service.addItemReview(userA, item.id, key, input)).replayed).toBe(true);
+    expect((await service.itemDetail(userA, item.id)).reviews).toHaveLength(1);
+    await expect(service.addItemReview(userA, item.id, key, { ...input, verdict: "not_worth_it" })).rejects.toMatchObject({ status: 409 });
+    const second = await service.addItemReview(userA, item.id, randomUUID(), { ...input, verdict: "unsure", wouldBuyAgain: false });
+    const history = (await service.itemDetail(userA, item.id)).reviews;
+    expect(history.map(review => review.id)).toEqual([second.review.id, results[0].review.id]);
+    expect(history[0].wouldBuyAgain).toBe(false);
+    expect((await service.spending(userA, "2026-10-01", "2026-10-31")).grossSpendingMinor).toBe(before);
+    await expect(service.existingItem(userA, key, { name: "Reuse", categoryId: categoryA, acquiredOn: null, description: null })).rejects.toMatchObject({ status: 409 });
+    const other = await service.existingItem(userA, randomUUID(), { name: "Other reviewed item", categoryId: categoryA, acquiredOn: null, description: null });
+    await expect(service.addItemReview(userA, other.item.id, key, input)).rejects.toMatchObject({ status: 409 });
+  });
+  it("protects review ownership, rejects future wants/archived items, and rolls back failed receipts", async () => {
+    const { item } = await service.existingItem(userA, randomUUID(), { name: "Review permissions", categoryId: categoryA, acquiredOn: null, description: null });
+    const input = { verdict: "unsure" as const, usageFrequency: null, wouldBuyAgain: null, note: null };
+    const key = randomUUID();
+    await expect(service.addItemReview(userA, item.id, key, { ...input, note: "x".repeat(5001) })).rejects.toBeDefined();
+    expect(await withUser(connection.db, userA, tx => tx.select().from(itemReviews).where(eq(itemReviews.itemId, item.id)))).toHaveLength(0);
+    expect(await withUser(connection.db, userA, tx => tx.select().from(operations).where(eq(operations.idempotencyKey, key)))).toHaveLength(0);
+    const result = await service.addItemReview(userA, item.id, key, input);
+    expect(result.replayed).toBe(false);
+    await expect(service.addItemReview(userB, item.id, randomUUID(), input)).rejects.toMatchObject({ status: 404 });
+    await expect(withUser(connection.db, userB, tx => tx.insert(itemReviews).values({ userId: userB, itemId: item.id, verdict: "unsure" }))).rejects.toBeDefined();
+    await expect(withUser(connection.db, userA, tx => tx.insert(itemReviews).values({ userId: userB, itemId: item.id, verdict: "unsure" }))).rejects.toBeDefined();
+    const ownedB = await service.existingItem(userB, randomUUID(), { name: "Account B review", categoryId: categoryB, acquiredOn: null, description: null });
+    expect((await service.addItemReview(userB, ownedB.item.id, key, input)).replayed).toBe(false);
+    const visibleB = await withUser(connection.db, userB, tx => tx.select().from(itemReviews));
+    expect(visibleB.every(review => review.userId === userB)).toBe(true);
+    expect(await connection.db.select().from(itemReviews)).toHaveLength(0);
+    const future = await service.addWant(userA, randomUUID(), { name: "Future review", categoryId: categoryA, description: null, productUrl: null, targetAmountMinor: null, priority: 2 });
+    await expect(service.addItemReview(userA, future.item.id, randomUUID(), input)).rejects.toMatchObject({ status: 422 });
+    await withUser(connection.db, userA, tx => tx.update(items).set({ archivedAt: new Date().toISOString() }).where(eq(items.id, item.id)));
+    await expect(service.addItemReview(userA, item.id, randomUUID(), input)).rejects.toMatchObject({ status: 404 });
   });
 });

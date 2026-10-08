@@ -1,4 +1,11 @@
 import { z } from "zod";
+import { usageFrequencies, worthVerdicts } from "./reviews";
+export const itemReviewInput = z.object({
+  verdict: z.enum(worthVerdicts),
+  usageFrequency: z.enum(usageFrequencies).nullable().default(null),
+  wouldBuyAgain: z.boolean().nullable().default(null),
+  note: z.string().trim().max(5000).nullable().default(null),
+}).strict();
 export const currencies = ["USD", "EUR", "GBP", "CAD", "AUD"] as const;
 export const calendarDate = z
   .string()
@@ -64,6 +71,11 @@ export const collectionInput = paginationInput.extend({
   q: z.string().trim().max(200).default(""),
   categoryId: z.uuid().optional(),
   sort: z.enum(["newest", "name", "purchased"]).default("newest"),
+});
+export const wantsListInput = paginationInput.extend({
+  q: z.string().trim().max(200).default(""),
+  categoryId: z.uuid().optional(),
+  sort: z.enum(["priority", "newest", "name"]).default("priority"),
 });
 export const spendingInput = z
   .object({ from: calendarDate, to: calendarDate })

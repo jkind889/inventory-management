@@ -11,7 +11,7 @@ A desktop-first collection and purchase tracker. Built with Next.js, React, Type
 - Atomic item/expense creation, existing-item entry, and date-based spending totals.
 - Local integration tests covering real Auth, API requests, transactions, and account isolation.
 
-The homepage now includes email sign-in, account creation, password-reset screens, and a responsive collection interface. Search, category filters, sorting, grid/list views, item details, new purchases, and existing-item entry use the authenticated Hono API. The Spending view shows a selected month’s total, category breakdown, and paginated purchase history with linked item details. The collection home groups categories into editorial blocks with the two latest distinct purchased items by actual transaction date. Future Wants saves wishlist entries with optional estimated prices, product links, notes, and priority; these do not affect owned-item counts or spending. Photos, wishlist-to-purchase conversion, refunds, subscriptions, and check-ins are next. See [the build plan](docs/build-plan.md) for the product scope.
+The homepage now includes email sign-in, account creation, password-reset screens, and a responsive collection interface. Search, category filters, sorting, grid/list views, item details, new purchases, and existing-item entry use the authenticated Hono API. The Spending view shows a selected month’s total, category breakdown, and paginated purchase history with linked item details. The collection home groups categories into editorial blocks with the two latest distinct purchased items by actual transaction date. Future Wants saves wishlist entries with optional estimated prices, product links, notes, and priority; these do not affect owned-item counts or spending. Subscriptions is available as a category, and item details supports saved value check-ins with verdict, usage, repurchase intent, notes, and history. Photos, wishlist-to-purchase conversion, refunds, recurring subscription billing, and suggested check-in dates are next. See [item value check-ins](docs/item-worth.md). See [the build plan](docs/build-plan.md) for the product scope.
 
 ## Project connections
 
@@ -20,7 +20,7 @@ The homepage now includes email sign-in, account creation, password-reset screen
 - Dashboard: https://supabase.com/dashboard/project/mkthxogkzllahenbrxle
 - Application tables are in the **app** schema, not public. Select that schema in the table editor.
 
-Four migrations have been applied to the hosted project, including retry receipts for existing-item creation. Local filenames match its migration history. The repository contains the application scaffold, migration history, and setup instructions.
+Five migrations have been applied to the hosted project, including retry receipts for existing-item creation and item value check-ins. Local filenames match its migration history. The repository contains the application scaffold, migration history, and setup instructions.
 
 The hosted URL, publishable key, and restricted `inventory_runtime` connection are configured in the ignored `.env.local`. The connection uses `aws-0-us-east-1.pooler.supabase.com:6543` with a generated password kept out of Git. TLS verifies the certificate chain and hostname using the official Supabase root CA bundled in `src/server/db/supabase-ca.ts`. Run `npm run db:check` for a read-only hosted connection check. Supabase CLI authentication/linking is separate from the connected Supabase tool used to apply these migrations.
 
@@ -78,13 +78,14 @@ Every endpoint except health requires `Authorization: Bearer <Supabase access to
 | Endpoint | Purpose |
 | --- | --- |
 | GET /api/health | Process health; does not claim database readiness. |
-| POST /api/profile/bootstrap | Create a profile and six starter categories once. Body: `{}` or currency/timezone preferences. |
+| POST /api/profile/bootstrap | Create a profile and seven starter categories once. Body: `{}` or currency/timezone preferences. |
 | GET /api/categories | Active categories belonging to the account. |
 | GET /api/collections/overview | Active categories, owned-item counts, and the two latest purchased items per category across all records. |
 | GET /api/wants | Account-scoped wishlist, priority-first ordering, and `limit`/`offset` pagination. |
 | POST /api/wants | Save a wishlist entry without an expense; requires a UUID `Idempotency-Key` header. |
 | GET /api/collection | Owned collection with exact recorded costs, total count, `q`, `categoryId`, `sort` (newest/name/purchased), `limit`, and `offset`. |
-| GET /api/items/:id | Account-scoped item and its purchase records. |
+| GET /api/items/:id | Account-scoped item, purchase records, and up to 20 latest value check-ins. |
+| POST /api/items/:id/reviews | Append a value check-in with verdict, usage, repurchase intent and notes; requires an idempotency key. |
 | GET /api/items | Owned, unarchived items; `limit` and `offset` pagination. |
 | POST /api/items | Existing item with name/category and optional acquisition date/description; no expense. Requires a UUID `Idempotency-Key` header. |
 | POST /api/purchases | Owned item plus expense, in one transaction. Requires a UUID `Idempotency-Key` header. |
@@ -129,11 +130,11 @@ Use the Supabase publishable key in the browser; the restricted database connect
 
 Set Supabase Auth's Site URL to the deployed app origin and allow its callback URLs, including `/?mode=recovery`; allow `http://localhost:3000` and its recovery URL for local development. Account creation can require email confirmation depending on the project configuration. Confirmation and password recovery depend on Supabase email delivery; production email delivery has not been verified in this UI pass. Use an appropriate SMTP provider before relying on production email flows.
 
-The collection creates a profile and six starter categories on first sign-in. New accounts choose one reporting currency. New purchases create spending; “Already owned” creates only an item. Unknown prices/dates are explicitly labeled. Artwork identifies categories and does not represent uploaded item photos.
+The collection creates a profile and seven starter categories on first sign-in. New accounts choose one reporting currency. New purchases create spending; “Already owned” creates only an item. Unknown prices/dates are explicitly labeled. Artwork identifies categories and does not represent uploaded item photos.
 
 ## Spending view
 
-After signing in, choose **Spending** in the sidebar or mobile navigation. The initial month uses the account timezone. Month controls update both the total and history using actual purchase dates, including the first and last calendar day. History pages show 10 transactions; totals always include the full selected month. Existing possessions without expenses do not affect totals. Archived items/categories retain their spending records. This first spending slice is read-only; quick-expense entry, corrections, refunds, and subscriptions remain future work.
+After signing in, choose **Spending** in the sidebar or mobile navigation. The initial month uses the account timezone. Month controls update both the total and history using actual purchase dates, including the first and last calendar day. History pages show 10 transactions; totals always include the full selected month. Existing possessions without expenses do not affect totals. Archived items/categories retain their spending records. This first spending slice is read-only; quick-expense entry, corrections, refunds, and recurring subscription charges remain future work.
 
 ## Editorial layout and Future Wants
 

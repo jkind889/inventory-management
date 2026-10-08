@@ -52,4 +52,16 @@ describe("API boundary", () => {
     expect((await api().request("/api/wants", { method: "POST", headers: { ...headers, "Idempotency-Key": "invalid" }, body: JSON.stringify(base) })).status).toBe(400);
     expect((await api().request("/api/wants?limit=101", { headers })).status).toBe(400);
   });
+  it("validates wishlist filters and forwards their parsed values", async () => {
+    const headers = { Authorization: "Bearer valid" };
+    for (const query of ["categoryId=invalid", "sort=invalid", `q=${"x".repeat(201)}`]) {
+      expect((await api().request(`/api/wants?${query}`, { headers })).status).toBe(400);
+    }
+    const wants = vi.fn(async () => ({ data: [], total: 0, limit: 12, offset: 12 }));
+    const app = createApi({ verifyToken: async () => userId, service: () => ({ wants }) as unknown as InventoryService });
+    const response = await app.request(`/api/wants?limit=12&offset=12&categoryId=${userId}&q=lamp&sort=name`, { headers });
+    expect(response.status).toBe(200);
+    expect(wants).toHaveBeenCalledWith(userId, { limit: 12, offset: 12, categoryId: userId, q: "lamp", sort: "name" });
+  });
+
 });
