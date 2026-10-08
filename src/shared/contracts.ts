@@ -20,6 +20,30 @@ export const existingItemInput = z
     description: z.string().trim().max(5000).nullable().default(null),
   })
   .strict();
+export const wantInput = z
+  .object({
+    name,
+    categoryId: z.uuid(),
+    description: z.string().trim().max(5000).nullable().default(null),
+    productUrl: z
+      .url()
+      .max(2048)
+      .refine(
+        (value) => ["https:", "http:"].includes(new URL(value).protocol),
+        "Use an http or https link.",
+      )
+      .nullable()
+      .default(null),
+    targetAmountMinor: z
+      .number()
+      .int()
+      .min(0)
+      .max(999999999999)
+      .nullable()
+      .default(null),
+    priority: z.number().int().min(1).max(3).default(2),
+  })
+  .strict();
 export const purchaseInput = z
   .object({
     name,

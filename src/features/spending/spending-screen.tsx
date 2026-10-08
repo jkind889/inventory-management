@@ -90,7 +90,6 @@ export function SpendingScreen({
     <>
       <header className="collection-heading spending-heading">
         <div>
-          <p className="eyebrow">My space</p>
           <h1>Spending</h1>
           <p className="muted">A clearer picture of your purchases.</p>
         </div>

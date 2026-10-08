@@ -1,6 +1,6 @@
 # Collection app: data model and first build
 
-Status: backend foundation, sign-in, collection interface, and a read-only monthly Spending view are implemented. See README.md for tested endpoints and setup. Spending includes category totals, date-filtered pagination, and linked item details; standalone expense entry, photos, wishlist conversion, refunds/sales, subscriptions, and check-ins remain future slices.
+Status: backend foundation, sign-in, collection interface, and a read-only monthly Spending view are implemented. See README.md for tested endpoints and setup. Collections now has an editorial category overview with two recent purchased items per category, and Future Wants supports persistent wishlist creation and browsing. Spending includes category totals, date-filtered pagination, and linked item details; standalone expense entry, photos, wishlist-to-purchase conversion, refunds/sales, subscriptions, and check-ins remain future slices.
 
 ## Product scope
 

@@ -1,14 +1,54 @@
-import { createHash } from "node:crypto";
 import { and, asc, count, desc, eq, getTableColumns, gte, isNull, lte, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
 import type { z } from "zod";
 import type { Database } from "../db/client";
 import { withUser } from "../db/client";
-import { categories, items, operations, profiles, transactions } from "../db/schema";
-import type { PurchaseInput, bootstrapInput, existingItemInput, collectionInput, transactionListInput } from "../../shared/contracts";
+import { categories, items, profiles, transactions } from "../db/schema";
+import { withIdempotency } from "./idempotency";
+import type { PurchaseInput, bootstrapInput, existingItemInput, wantInput, collectionInput, transactionListInput } from "../../shared/contracts";
 
 export function createInventoryService(db: Database) {
   return {
+    collectionOverview(userId: string) {
+      return withUser(db, userId, async tx => {
+        const active = await tx.select().from(categories).where(and(eq(categories.userId, userId), isNull(categories.archivedAt))).orderBy(categories.createdAt, categories.id);
+        const totals = await tx.select({ categoryId: items.categoryId, total: count() }).from(items)
+          .where(and(eq(items.userId, userId), eq(items.state, "owned"), isNull(items.archivedAt))).groupBy(items.categoryId);
+        // Rank distinct purchased items per collection, across the complete
+        // collection, using actual transaction dates rather than entry dates.
+        const ranked = tx.select({ ...getTableColumns(items),
+          recordedCostMinor: sql<string>`sum(${transactions.amountMinor})::text`.as("recorded_cost"),
+          purchasedOn: sql<string>`max(${transactions.occurredOn})::text`.as("purchased_on"),
+          rank: sql<number>`row_number() over (partition by ${items.categoryId} order by max(${transactions.occurredOn}) desc, ${items.createdAt} desc, ${items.id})`.as("purchase_rank"),
+        }).from(items).innerJoin(transactions, and(eq(transactions.itemId, items.id), eq(transactions.userId, userId)))
+          .where(and(eq(items.userId, userId), eq(items.state, "owned"), isNull(items.archivedAt))).groupBy(items.id).as("ranked");
+        const latest = await tx.select().from(ranked).where(lte(ranked.rank, 2)).orderBy(ranked.categoryId, ranked.rank);
+        const order = ["Tech", "Clothes", "Hobbies", "Furniture", "Groceries", "Other"];
+        active.sort((a, b) => (order.indexOf(a.name) < 0 ? 6 : order.indexOf(a.name)) - (order.indexOf(b.name) < 0 ? 6 : order.indexOf(b.name)) || a.name.localeCompare(b.name));
+        return { data: active.map(category => ({ category, total: totals.find(row => row.categoryId === category.id)?.total ?? 0,
+          latest: latest.filter(item => item.categoryId === category.id),
+        })) };
+      });
+    },
+    wants(userId: string, limit: number, offset: number) {
+      return withUser(db, userId, async tx => {
+        const where = and(eq(items.userId, userId), eq(items.state, "wishlist"), isNull(items.archivedAt));
+        const data = await tx.select().from(items).where(where).orderBy(sql`${items.priority} asc nulls last`, desc(items.createdAt), items.id).limit(limit).offset(offset);
+        const [total] = await tx.select({ count: count() }).from(items).where(where);
+        return { data, total: total.count, limit, offset };
+      });
+    },
+    addWant(userId: string, key: string, input: z.infer<typeof wantInput>) {
+      // The existing_item receipt represents item-only creation. Include state
+      // in its hash so a key cannot be reused between owned and wishlist flows.
+      const payload = { ...input, state: "wishlist" as const };
+      return withIdempotency(db, userId, key, "existing_item", payload, async tx => {
+        const [category] = await tx.select({ id: categories.id }).from(categories).where(and(eq(categories.userId, userId), eq(categories.id, input.categoryId), isNull(categories.archivedAt)));
+        if (!category) throw new HTTPException(422, { message: "Choose an active category from your collection." });
+        const [item] = await tx.insert(items).values({ userId, ...payload }).returning();
+        return { item };
+      });
+    },
     collection(userId: string, input: z.infer<typeof collectionInput>) {
       return withUser(db, userId, async tx => {
         const where = and(eq(items.userId, userId), eq(items.state, "owned"), isNull(items.archivedAt),
@@ -46,24 +86,16 @@ export function createInventoryService(db: Database) {
     items(userId: string, limit: number, offset: number) {
       return withUser(db, userId, tx => tx.select().from(items).where(and(eq(items.userId, userId), eq(items.state, "owned"), isNull(items.archivedAt))).orderBy(desc(items.createdAt), items.id).limit(limit).offset(offset));
     },
-    existingItem(userId: string, input: z.infer<typeof existingItemInput>) {
-      return withUser(db, userId, async tx => {
+    existingItem(userId: string, key: string, input: z.infer<typeof existingItemInput>) {
+      return withIdempotency(db, userId, key, "existing_item", input, async tx => {
         const [category] = await tx.select({ id: categories.id }).from(categories).where(and(eq(categories.userId, userId), eq(categories.id, input.categoryId), isNull(categories.archivedAt)));
         if (!category) throw new HTTPException(422, { message: "Choose an active category from your collection." });
         const [item] = await tx.insert(items).values({ userId, ...input }).returning();
-        return item;
+        return { item };
       });
     },
     purchase(userId: string, key: string, input: PurchaseInput) {
-      return withUser(db, userId, async tx => {
-        // Serialize retries for this user/key; the lock ends with the transaction.
-        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`${userId}:${key}`}, 0))`);
-        const hash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
-        const [previous] = await tx.select().from(operations).where(and(eq(operations.userId, userId), eq(operations.idempotencyKey, key)));
-        if (previous) {
-          if (previous.requestHash !== hash) throw new HTTPException(409, { message: "That request key was already used for a different purchase." });
-          return { ...previous.result, replayed: true };
-        }
+      return withIdempotency(db, userId, key, "purchase", input, async tx => {
         const [profile] = await tx.select().from(profiles).where(eq(profiles.userId, userId));
         if (!profile) throw new HTTPException(409, { message: "Set up your profile first." });
         if (profile.currency !== input.currency) throw new HTTPException(422, { message: "Use your profile's reporting currency." });
@@ -74,9 +106,7 @@ export function createInventoryService(db: Database) {
           userId, itemId: item.id, categoryId: input.categoryId, amountMinor: input.amountMinor,
           currency: input.currency, occurredOn: input.occurredOn, merchant: input.merchant, note: input.note,
         }).returning();
-        const result = { item, transaction };
-        await tx.insert(operations).values({ userId, idempotencyKey: key, operationType: "purchase", requestHash: hash, result });
-        return { ...result, replayed: false };
+        return { item, transaction };
       });
     },
     transactionHistory(userId: string, input: z.infer<typeof transactionListInput>) {

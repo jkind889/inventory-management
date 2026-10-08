@@ -2,19 +2,32 @@
 
 Audit date: October 6, 2026. Implementation baseline: `f9971bd`.
 
-The audit reviewed application code, database migrations, and dependencies. TypeScript, lint, and all 23 existing tests passed. The UI issues below were identified from source review; they still need focused reproduction and regression tests. No fixes have been applied.
+The audit reviewed application code, database migrations, and dependencies. TypeScript, lint, and all 23 existing tests passed at the audit baseline. The UI issues below were identified from source review; open issues still need focused reproduction and regression tests. Subsequent fixes are recorded under each issue.
 
 ## Review checklist
 
-- [ ] BUG-001: Collection search can stay in a loading state.
+- [x] BUG-001: Collection search can stay in a loading state (fixed; browser regression verified).
 - [ ] BUG-002: Spending retains an old error after a successful reload.
-- [ ] BUG-003: Retrying an existing-item submission can create duplicates.
+- [x] BUG-003: Retrying an existing-item submission can create duplicates (fixed; verified locally and hosted migration applied).
 - [ ] DEP-001: Review the development-only dependency advisory.
 - [ ] PREP-001: Decide on component/style organization before restyling.
 
 ## BUG-001 — Collection search can stay loading
 
-Priority: P2 · Status: Open
+Priority: P2 · Status: Fixed
+
+**Resolution — October 7, 2026:** Loading now derives from unsettled search input
+and whether the current collection request has completed. Each completed result
+or error records its request key; all search/filter/sort/page/refresh changes use
+that state instead of manually toggling loading. Aborted requests cannot publish
+results or errors. Rapid edit-and-undo returns to the existing results without
+an unnecessary request. A saved browser regression reproduced the original
+stuck state before the change and passed afterward. It also covers nonempty
+search undo, normal searches, page-two reset, delayed obsolete responses, request
+failure/retry, sorting, category filtering, and desktop/mobile rendering using
+isolated Auth/API fixtures. Run `npm run test:collection-ui` against the local
+app with an existing Playwright runtime. No database migration is required.
+The reproduction below describes the audit baseline, before this fix.
 
 Source: [Search input](../../src/features/collection/collection-screen.tsx#L575) and [debounce/request effects](../../src/features/collection/collection-screen.tsx#L388).
 
@@ -55,7 +68,24 @@ Acceptance: A previously failing month displays its total and history after a su
 
 ## BUG-003 — Existing-item retries can create duplicates
 
-Priority: P2 · Status: Open
+Priority: P2 · Status: Fixed · Hosted migration applied
+
+**Resolution — October 6, 2026:** Purchases and existing-item creation now share
+an account/key lock, request/type conflict checks, and an atomic result receipt.
+Both form modes send a retry key and reuse it after failure. Existing-item
+creation returns 201 initially and 200 with the original item on replay. The
+operation model and new migration allow `existing_item` receipts. Local
+regression tests cover lost-response replay, concurrent requests, changed fields,
+cross-flow conflicts, separate intentional items, rollback, and account isolation.
+All 30 tests, TypeScript, lint, and the production build passed. Local database
+security advisors found no issues, and local migration history matches the SQL
+files. After user approval, the hosted migration was applied and its validated
+operation-type constraint and unique account/key constraint were verified.
+The [submission retry baseline](submission-retries.md) and project instructions
+require this protection for future mutations that could repeat an effect.
+Migration `20261007022934_existing_item_idempotency.sql` is applied to the hosted
+database. The local filename matches Supabase's assigned version. The
+reproduction below describes the audit baseline, before this fix.
 
 Source: [Form submission](../../src/features/collection/collection-screen.tsx#L138), [POST /api/items](../../src/server/api/app.ts#L40), and [existing-item service](../../src/server/services/inventory.ts#L49).
 

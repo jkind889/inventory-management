@@ -6,12 +6,12 @@ A desktop-first collection and purchase tracker. Built with Next.js, React, Type
 
 - Hono API inside the Next.js Node runtime.
 - Supabase Auth access-token verification and a restricted Postgres login.
-- SQL migrations for profiles, categories, items, expenses, and idempotent purchase requests.
+- SQL migrations for profiles, categories, items, expenses, and idempotent purchase/existing-item requests.
 - Row-level security and same-owner foreign keys on all application tables.
 - Atomic item/expense creation, existing-item entry, and date-based spending totals.
 - Local integration tests covering real Auth, API requests, transactions, and account isolation.
 
-The homepage now includes email sign-in, account creation, password-reset screens, and a responsive collection interface. Search, category filters, sorting, grid/list views, item details, new purchases, and existing-item entry use the authenticated Hono API. The Spending view shows a selected month’s total, category breakdown, and paginated purchase history with linked item details. Photos, wishlist conversion, refunds, subscriptions, and check-ins are next. See [the build plan](docs/build-plan.md) for the product scope.
+The homepage now includes email sign-in, account creation, password-reset screens, and a responsive collection interface. Search, category filters, sorting, grid/list views, item details, new purchases, and existing-item entry use the authenticated Hono API. The Spending view shows a selected month’s total, category breakdown, and paginated purchase history with linked item details. The collection home groups categories into editorial blocks with the two latest distinct purchased items by actual transaction date. Future Wants saves wishlist entries with optional estimated prices, product links, notes, and priority; these do not affect owned-item counts or spending. Photos, wishlist-to-purchase conversion, refunds, subscriptions, and check-ins are next. See [the build plan](docs/build-plan.md) for the product scope.
 
 ## Project connections
 
@@ -20,7 +20,7 @@ The homepage now includes email sign-in, account creation, password-reset screen
 - Dashboard: https://supabase.com/dashboard/project/mkthxogkzllahenbrxle
 - Application tables are in the **app** schema, not public. Select that schema in the table editor.
 
-Three migrations have been applied to the hosted project. Local filenames match its migration history. The repository contains the application scaffold, migration history, and setup instructions.
+Four migrations have been applied to the hosted project, including retry receipts for existing-item creation. Local filenames match its migration history. The repository contains the application scaffold, migration history, and setup instructions.
 
 The hosted URL, publishable key, and restricted `inventory_runtime` connection are configured in the ignored `.env.local`. The connection uses `aws-0-us-east-1.pooler.supabase.com:6543` with a generated password kept out of Git. TLS verifies the certificate chain and hostname using the official Supabase root CA bundled in `src/server/db/supabase-ca.ts`. Run `npm run db:check` for a read-only hosted connection check. Supabase CLI authentication/linking is separate from the connected Supabase tool used to apply these migrations.
 
@@ -59,7 +59,17 @@ npm run build
 
 `npm test` runs API boundary tests and includes database integration tests when `.env.test.local` exists. `npm run db:test` requires the local test environment and fails if it is missing. Integration tests refuse remote database hosts, create temporary accounts, and remove them afterward.
 
-The current verification passed 23 tests, the production build, lint, and TypeScript. The schema also passed a clean local reset and cloud RLS checks with rolled-back fixtures. Supabase's security advisories are clear; remaining performance notices identify unused indexes on the empty database. The dependency audit is clear. A scoped esbuild override fixes an advisory in Drizzle Kit's development tooling; introspection was verified with that override.
+`npm run test:collection-home` verifies the new collection blocks, drill-down, category-specific Add Item, Spending, wishlist creation/retry/reload, error recovery, and desktop/tablet/mobile layouts with isolated API fixtures. It uses the same Playwright environment options as the search regression.
+
+`npm run test:collection-ui` runs the collection search/loading browser regression
+against an already-running local app (default `http://localhost:3000`). It uses
+isolated Auth/API fixtures and an existing Playwright installation with installed
+Chrome; it changes no account data. If Playwright is bundled outside this project,
+set `PLAYWRIGHT_MODULE_PATH` to its `playwright/index.js`. Set `UI_TEST_BASE_URL`
+for another loopback URL, `UI_TEST_BROWSER_CHANNEL` for another installed browser,
+or `UI_TEST_EVIDENCE_DIR` for screenshots (default `/tmp/inventory-collection-search`).
+
+The current styling verification passed 34 unit/database tests, both fixture browser regressions, the production build, lint, and TypeScript. The schema also passed a clean local reset and cloud RLS checks with rolled-back fixtures. Supabase's security advisories are clear; remaining performance notices identify unused indexes on the empty database. The dependency audit is clear. A scoped esbuild override fixes an advisory in Drizzle Kit's development tooling; introspection was verified with that override.
 
 ## API
 
@@ -70,10 +80,13 @@ Every endpoint except health requires `Authorization: Bearer <Supabase access to
 | GET /api/health | Process health; does not claim database readiness. |
 | POST /api/profile/bootstrap | Create a profile and six starter categories once. Body: `{}` or currency/timezone preferences. |
 | GET /api/categories | Active categories belonging to the account. |
+| GET /api/collections/overview | Active categories, owned-item counts, and the two latest purchased items per category across all records. |
+| GET /api/wants | Account-scoped wishlist, priority-first ordering, and `limit`/`offset` pagination. |
+| POST /api/wants | Save a wishlist entry without an expense; requires a UUID `Idempotency-Key` header. |
 | GET /api/collection | Owned collection with exact recorded costs, total count, `q`, `categoryId`, `sort` (newest/name/purchased), `limit`, and `offset`. |
 | GET /api/items/:id | Account-scoped item and its purchase records. |
 | GET /api/items | Owned, unarchived items; `limit` and `offset` pagination. |
-| POST /api/items | Existing item with name/category and optional acquisition date/description; no expense. |
+| POST /api/items | Existing item with name/category and optional acquisition date/description; no expense. Requires a UUID `Idempotency-Key` header. |
 | POST /api/purchases | Owned item plus expense, in one transaction. Requires a UUID `Idempotency-Key` header. |
 | GET /api/transactions | Confirmed expenses with item/category names and total count; `limit`/`offset` pagination and optional paired `from`/`to` dates (inclusive). |
 | GET /api/spending/summary?from=2026-10-01&to=2026-10-31 | Inclusive calendar-date spending total and category breakdown. |
@@ -90,7 +103,7 @@ Example purchase body:
 }
 ```
 
-Generate one idempotency key per intended purchase, reuse it on retries, and use a new key for a different purchase. The first success returns 201; an identical retry returns 200 with `replayed: true`; a reused key with different content returns 409.
+Generate one idempotency key per intended purchase or existing-item entry, reuse it on retries, and use a new key for a separate intended submission. The first success returns 201; an identical retry returns 200 with `replayed: true`; a reused key with different content or operation type returns 409. All future mutations that could repeat an effect follow the [submission retry baseline](docs/submission-retries.md).
 
 Amounts are integer minor units. Supported initial currencies are USD, EUR, GBP, CAD, and AUD; one per account, with no conversion. Spending aggregates are integer strings to avoid precision loss. Zero-cost possessions use existing-item entry. Refund/sale transactions are intentionally disallowed until their accounting behavior is implemented.
 
@@ -121,3 +134,9 @@ The collection creates a profile and six starter categories on first sign-in. Ne
 ## Spending view
 
 After signing in, choose **Spending** in the sidebar or mobile navigation. The initial month uses the account timezone. Month controls update both the total and history using actual purchase dates, including the first and last calendar day. History pages show 10 transactions; totals always include the full selected month. Existing possessions without expenses do not affect totals. Archived items/categories retain their spending records. This first spending slice is read-only; quick-expense entry, corrections, refunds, and subscriptions remain future work.
+
+## Editorial layout and Future Wants
+
+The signed-in app uses three top tabs: Collections, Spending, and Future Wants. Collection blocks remain visible with zero or one purchase. Existing possessions count toward a collection but do not displace recent purchased items. Item panels currently show labeled category artwork; they are not uploaded photos. See [the visual spec and verification notes](docs/design/collections.md).
+
+Wishlist writes use the existing item-only `existing_item` receipt type, with `state: wishlist` in the validated receipt payload. This keeps the existing migration and old owned-item hashes intact, distinguishes submission content across the two flows, and commits the item and receipt together. No schema change is needed. The first write returns 201; identical retries return 200; conflicting content returns 409. Wishlist conversion, editing, and removal are not included in this styling slice.

@@ -15,6 +15,19 @@ export type CollectionResponse = {
   limit: number;
   offset: number;
 };
+export type CollectionOverview = {
+  data: {
+    category: Category;
+    total: number;
+    latest: (CollectionItem & { purchasedOn: string })[];
+  }[];
+};
+export type WantsResponse = {
+  data: (typeof items.$inferSelect)[];
+  total: number;
+  limit: number;
+  offset: number;
+};
 export type ItemDetail = {
   item: typeof items.$inferSelect;
   transactions: (typeof transactions.$inferSelect)[];

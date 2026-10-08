@@ -13,13 +13,15 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:collection-ui": "node tests/collection-search.browser.mjs",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset --local",
     "db:test": "REQUIRE_DATABASE_TESTS=1 vitest run tests/database.test.ts",
     "db:types": "drizzle-kit pull",
     "db:setup:local": "node scripts/setup-local.mjs",
-    "db:check": "node --conditions=react-server --import tsx scripts/check-db.ts"
+    "db:check": "node --conditions=react-server --import tsx scripts/check-db.ts",
+    "test:collection-home": "node tests/collection-home.browser.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.2",

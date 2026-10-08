@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import { createDatabase, withUser } from "../src/server/db/client";
 import { createInventoryService } from "../src/server/services/inventory";
-import { categories, items, profiles, transactions } from "../src/server/db/schema";
+import { categories, items, operations, profiles, transactions } from "../src/server/db/schema";
 import { createApi } from "../src/server/api/app";
 import { verifyToken } from "../src/server/api/auth";
 
@@ -45,7 +45,7 @@ describe.skipIf(!enabled)("local Postgres integration", () => {
     expect(result).toHaveLength(1); expect(result[0].currency).toBe("USD");
   });
   it("adds an existing possession without creating spending", async () => {
-    await service.existingItem(userA, { name: "Old chair", categoryId: categoryA, acquiredOn: null, description: null });
+    await service.existingItem(userA, randomUUID(), { name: "Old chair", categoryId: categoryA, acquiredOn: null, description: null });
     expect(await service.transactions(userA, 100, 0)).toHaveLength(0);
   });
   it("records a purchase once even for simultaneous retries", async () => {
@@ -114,6 +114,127 @@ describe.skipIf(!enabled)("local Postgres integration", () => {
     const [grants] = await admin`select has_schema_privilege('anon', 'app', 'usage') as anon, has_schema_privilege('authenticated', 'app', 'usage') as authenticated`;
     expect(grants).toEqual({ anon: false, authenticated: false });
   });
+  it("replays an existing-item submission after a lost response and simultaneous retries", async () => {
+    const key = randomUUID();
+    const input = { name: "Retry chair", categoryId: categoryA, acquiredOn: null, description: null };
+    const api = createApi({ verifyToken: async () => userA, service: () => service });
+    const request = () => api.request("/api/items", { method: "POST", headers: { Authorization: "Bearer test", "Content-Type": "application/json", "Idempotency-Key": key }, body: JSON.stringify(input) });
+    const before = (await service.items(userA, 100, 0)).length;
+    const spendingBefore = await service.spending(userA, "2026-10-01", "2026-10-31");
+    // The server commits, but the browser never receives/uses this response.
+    const first = await request();
+    expect(first.status).toBe(201);
+    const firstBody = await first.json();
+    const responses = await Promise.all([request(), request()]);
+    for (const response of responses) {
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ...firstBody, replayed: true });
+    }
+    expect((await service.items(userA, 100, 0)).length).toBe(before + 1);
+    expect(await service.spending(userA, "2026-10-01", "2026-10-31")).toEqual(spendingBefore);
+    const freshKey = randomUUID();
+    const concurrent = await Promise.all([service.existingItem(userA, freshKey, input), service.existingItem(userA, freshKey, input)]);
+    expect(concurrent[0].item.id).toBe(concurrent[1].item.id);
+    expect(concurrent.map(result => result.replayed).sort()).toEqual([false, true]);
+    expect((await service.items(userA, 100, 0)).length).toBe(before + 2);
+    expect(concurrent[0].item.id).not.toBe(firstBody.item.id);
+    await expect(service.existingItem(userA, key, { ...input, name: "Changed" })).rejects.toMatchObject({ status: 409 });
+    await expect(service.purchase(userA, key, purchase())).rejects.toMatchObject({ status: 409 });
+    const originalPurchase = (await withUser(connection.db, userA, tx => tx.select().from(operations))).find(operation => operation.operationType === "purchase")!;
+    await expect(service.existingItem(userA, originalPurchase.idempotencyKey, input)).rejects.toMatchObject({ status: 409 });
+  });
+  it("rolls back failed existing-item submissions and can retry the same key", async () => {
+    const key = randomUUID();
+    const input = { name: "", categoryId: categoryA, acquiredOn: null, description: null };
+    const before = (await service.items(userA, 100, 0)).length;
+    await expect(service.existingItem(userA, key, input)).rejects.toBeDefined();
+    const receipts = await withUser(connection.db, userA, tx => tx.select().from(operations).where(eq(operations.idempotencyKey, key)));
+    expect(receipts).toHaveLength(0);
+    expect((await service.items(userA, 100, 0)).length).toBe(before);
+    expect((await service.existingItem(userA, key, { ...input, name: "Valid chair" })).replayed).toBe(false);
+  });
+  it("scopes submission keys and receipts to their account", async () => {
+    const key = randomUUID();
+    const input = { name: "Same key", categoryId: categoryA, acquiredOn: null, description: null };
+    const a = await service.existingItem(userA, key, input);
+    const b = await service.existingItem(userB, key, { ...input, categoryId: categoryB });
+    expect(a.item.id).not.toBe(b.item.id);
+    const receipts = await withUser(connection.db, userB, tx => tx.select().from(operations).where(eq(operations.idempotencyKey, key)));
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0].userId).toBe(userB);
+  });
+  it("ranks the two latest distinct purchases per collection across all records", async () => {
+    const [category] = await withUser(connection.db, userA, tx => tx.insert(categories).values({ userId: userA, name: "Overview fixtures" }).returning());
+    const old = await service.purchase(userA, randomUUID(), { ...purchase(), categoryId: category.id, occurredOn: "2020-01-01" });
+    const recent = await service.purchase(userA, randomUUID(), { ...purchase(), categoryId: category.id, occurredOn: "2026-10-10" });
+    const second = await service.purchase(userA, randomUUID(), { ...purchase(), categoryId: category.id, occurredOn: "2026-10-05" });
+    await service.purchase(userA, randomUUID(), { ...purchase(), categoryId: category.id, occurredOn: "2026-10-01" });
+    // A later entry/acquisition date without spending is never a recent purchase.
+    await service.existingItem(userA, randomUUID(), { name: "Existing possession", categoryId: category.id, acquiredOn: "2030-01-01", description: null });
+    // Backfilled records beyond a normal browse page must not truncate previews.
+    for (let index = 0; index < 13; index++) await service.purchase(userA, randomUUID(), { ...purchase(), categoryId: category.id, occurredOn: "2026-09-01" });
+    await withUser(connection.db, userA, async tx => {
+      await tx.update(items).set({ acquiredOn: "1999-01-01" }).where(eq(items.id, recent.item.id));
+      await tx.insert(transactions).values({ userId: userA, categoryId: category.id, itemId: recent.item.id, amountMinor: 100, currency: "USD", occurredOn: "2026-10-10" });
+    });
+    const block = (await service.collectionOverview(userA)).data.find(row => row.category.id === category.id)!;
+    expect(block.total).toBe(18);
+    expect(block.latest.map(item => item.id)).toEqual([recent.item.id, second.item.id]);
+    expect(block.latest[0]).toMatchObject({ purchasedOn: "2026-10-10", recordedCostMinor: "20099" });
+    expect((await service.collectionOverview(userB)).data.some(row => row.category.id === category.id)).toBe(false);
+    const [sparseCategory, emptyCategory] = await withUser(connection.db, userA, tx => tx.insert(categories).values([{ userId: userA, name: "Sparse fixtures" }, { userId: userA, name: "Empty fixtures" }]).returning());
+    const single = await service.purchase(userA, randomUUID(), { ...purchase(), categoryId: sparseCategory.id });
+    const sparseOverview = (await service.collectionOverview(userA)).data;
+    expect(sparseOverview.find(row => row.category.id === sparseCategory.id)).toMatchObject({ total: 1, latest: [{ id: single.item.id }] });
+    expect(sparseOverview.find(row => row.category.id === emptyCategory.id)).toMatchObject({ total: 0, latest: [] });
+    const empty = (await service.collectionOverview(userA)).data.find(row => row.category.id === categoryA)!;
+    expect(empty.latest.length).toBeLessThanOrEqual(2);
+    await withUser(connection.db, userA, tx => tx.update(items).set({ archivedAt: new Date().toISOString() }).where(eq(items.id, recent.item.id)));
+    expect((await service.collectionOverview(userA)).data.find(row => row.category.id === category.id)!.latest.map(item => item.id)).not.toContain(recent.item.id);
+    // Archived collection categories are not shown on the home screen.
+    await withUser(connection.db, userA, tx => tx.update(categories).set({ archivedAt: new Date().toISOString() }).where(eq(categories.id, category.id)));
+    expect((await service.collectionOverview(userA)).data.some(row => row.category.id === category.id)).toBe(false);
+    expect((await service.itemDetail(userA, old.item.id)).transactions).toHaveLength(1);
+  });
+  it("saves and replays wishlist entries without changing owned items or spending", async () => {
+    const input = { name: "Future headphones", categoryId: categoryA, description: "Consider later", productUrl: "https://example.com/headphones", targetAmountMinor: 15000, priority: 1 };
+    const before = await service.spending(userA, "2026-01-01", "2026-12-31");
+    const owned = (await service.collection(userA, { q: "", sort: "newest", limit: 100, offset: 0 })).total;
+    const key = randomUUID();
+    const first = await service.addWant(userA, key, input);
+    const retries = await Promise.all([service.addWant(userA, key, input), service.addWant(userA, key, input)]);
+    expect(retries.every(row => row.replayed && row.item.id === first.item.id)).toBe(true);
+    expect((await service.wants(userA, 12, 0)).data).toHaveLength(1);
+    expect(first.item).toMatchObject({ state: "wishlist", targetAmountMinor: 15000, productUrl: input.productUrl, priority: 1, acquiredOn: null });
+    expect((await service.itemDetail(userA, first.item.id)).transactions).toHaveLength(0);
+    expect((await service.spending(userA, "2026-01-01", "2026-12-31")).grossSpendingMinor).toBe(before.grossSpendingMinor);
+    expect((await service.collection(userA, { q: "", sort: "newest", limit: 100, offset: 0 })).total).toBe(owned);
+    expect((await service.wants(userA, 12, 1)).data).toHaveLength(0);
+    expect((await service.wants(userB, 12, 0)).total).toBe(0);
+    await expect(service.itemDetail(userB, first.item.id)).rejects.toMatchObject({ status: 404 });
+    await expect(service.addWant(userA, key, { ...input, priority: 2 })).rejects.toMatchObject({ status: 409 });
+    await expect(service.existingItem(userA, key, { name: input.name, categoryId: categoryA, description: null, acquiredOn: null })).rejects.toMatchObject({ status: 409 });
+    await expect(service.purchase(userA, key, purchase())).rejects.toMatchObject({ status: 409 });
+  });
+  it("serializes first wishlist submissions, rolls back failures, and isolates keys", async () => {
+    const input = { name: "Future lamp", categoryId: categoryA, description: null, productUrl: null, targetAmountMinor: null, priority: 3 };
+    const key = randomUUID();
+    const simultaneous = await Promise.all([service.addWant(userA, key, input), service.addWant(userA, key, input)]);
+    expect(simultaneous[0].item.id).toBe(simultaneous[1].item.id);
+    expect(simultaneous.map(row => row.replayed).sort()).toEqual([false, true]);
+    const failedKey = randomUUID();
+    const total = (await service.wants(userA, 100, 0)).total;
+    await expect(service.addWant(userA, failedKey, { ...input, name: " " })).rejects.toBeDefined();
+    expect((await service.wants(userA, 100, 0)).total).toBe(total);
+    expect(await withUser(connection.db, userA, tx => tx.select().from(operations).where(eq(operations.idempotencyKey, failedKey)))).toHaveLength(0);
+    expect((await service.addWant(userA, failedKey, input)).replayed).toBe(false);
+    await expect(service.addWant(userA, randomUUID(), { ...input, categoryId: categoryB })).rejects.toMatchObject({ status: 422 });
+    const b = await service.addWant(userB, key, { ...input, categoryId: categoryB });
+    expect(b.item.id).not.toBe(simultaneous[0].item.id);
+    const ordered = (await service.wants(userA, 100, 0)).data;
+    expect(ordered[0].priority).toBe(1);
+    expect(ordered.at(-1)!.priority).toBe(3);
+  });
   it("verifies a real Supabase Auth session through Hono and Drizzle", async () => {
     const authUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     if (!['localhost', '127.0.0.1'].includes(new URL(authUrl).hostname)) throw new Error("Auth integration must stay local.");
@@ -130,6 +251,13 @@ describe.skipIf(!enabled)("local Postgres integration", () => {
     expect(result.status).toBe(201);
     const spending = await api.request("/api/spending/summary?from=2026-10-01&to=2026-10-31", { headers });
     expect((await spending.json()).grossSpendingMinor).toBe("19999");
+    const overview = await api.request("/api/collections/overview", { headers });
+    expect((await overview.json()).data.find((row: { category: { id: string } }) => row.category.id === category).latest).toHaveLength(1);
+    const wantRequest = { method: "POST", headers: { ...headers, "Idempotency-Key": randomUUID() }, body: JSON.stringify({ name: "Future lamp", categoryId: category, targetAmountMinor: 2500 }) };
+    expect((await api.request("/api/wants", wantRequest)).status).toBe(201);
+    expect((await api.request("/api/wants", wantRequest)).status).toBe(200);
+    expect((await (await api.request("/api/wants", { headers })).json()).total).toBe(1);
+    expect((await (await api.request("/api/spending/summary?from=2026-10-01&to=2026-10-31", { headers })).json()).grossSpendingMinor).toBe("19999");
     await auth.auth.signOut();
   });
 });
