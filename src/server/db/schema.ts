@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, boolean, date, jsonb, pgSchema, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, boolean, date, integer, jsonb, pgSchema, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { usageFrequencies, worthVerdicts } from "../../shared/reviews";
 
 // Query models only. supabase/migrations owns constraints, indexes, grants, and RLS.
@@ -39,7 +39,20 @@ export const itemReviews = appSchema.table("item_reviews", {
   wouldBuyAgain: boolean("would_buy_again"), note: text("note"),
   createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
 });
+export const itemPhotos = appSchema.table("item_photos", {
+  id: uuid("id").primaryKey().defaultRandom(), userId: uuid("user_id").notNull(), itemId: uuid("item_id").notNull(),
+  storagePath: text("storage_path").notNull(), status: text("status").notNull().default("pending"),
+  byteSize: integer("byte_size").notNull(), mimeType: text("mime_type").notNull(), checksum: text("checksum").notNull(),
+  expectedCoverId: uuid("expected_cover_id"), width: integer("width"), height: integer("height"),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "string" }).notNull().default(sql`now() + interval '24 hours'`),
+  cleanupCheckedAt: timestamp("cleanup_checked_at", { withTimezone: true, mode: "string" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+});
 export type OperationResults = {
+  photo_import: { upload: typeof itemPhotos.$inferSelect };
+  photo_upload: { upload: typeof itemPhotos.$inferSelect };
+  photo_complete: { photoId: string };
+  photo_remove: { removedPhotoId: string };
   purchase: PurchaseResult;
   existing_item: { item: typeof items.$inferSelect };
   item_review: { review: typeof itemReviews.$inferSelect };

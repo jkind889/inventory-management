@@ -1,3 +1,4 @@
+import type { PhotoCover, PhotoUpload } from "./photos";
 import type {
   categories,
   items,
@@ -25,7 +26,7 @@ export type CollectionOverview = {
   data: {
     category: Category;
     total: number;
-    latest: (CollectionItem & { purchasedOn: string })[];
+    latest: (CollectionItem & { purchasedOn: string; cover: PhotoCover | null })[];
   }[];
 };
 export type WantsResponse = {
@@ -38,6 +39,8 @@ export type ItemDetail = {
   item: typeof items.$inferSelect;
   transactions: (typeof transactions.$inferSelect)[];
   reviews: ItemReview[];
+  cover: PhotoCover | null;
+  pendingPhoto: PhotoUpload | null;
 };
 export function formatMoney(minor: string | number, currency: string) {
   // Intl formats the whole part from BigInt, so large totals stay exact.

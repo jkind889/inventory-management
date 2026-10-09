@@ -11,7 +11,7 @@ A desktop-first collection and purchase tracker. Built with Next.js, React, Type
 - Atomic item/expense creation, existing-item entry, and date-based spending totals.
 - Local integration tests covering real Auth, API requests, transactions, and account isolation.
 
-The homepage now includes email sign-in, account creation, password-reset screens, and a responsive collection interface. Search, category filters, sorting, grid/list views, item details, new purchases, and existing-item entry use the authenticated Hono API. The Spending view shows a selected month’s total, category breakdown, and paginated purchase history with linked item details. The collection home groups categories into editorial blocks with the two latest distinct purchased items by actual transaction date. Future Wants saves wishlist entries with optional estimated prices, product links, notes, and priority; these do not affect owned-item counts or spending. Subscriptions is available as a category, and item details supports saved value check-ins with verdict, usage, repurchase intent, notes, and history. Photos, wishlist-to-purchase conversion, refunds, recurring subscription billing, and suggested check-in dates are next. See [item value check-ins](docs/item-worth.md). See [the build plan](docs/build-plan.md) for the product scope.
+The homepage now includes email sign-in, account creation, password-reset screens, and a responsive collection interface. Search, category filters, sorting, grid/list views, item details, new purchases, and existing-item entry use the authenticated Hono API. The Spending view shows a selected month’s total, category breakdown, and paginated purchase history with linked item details. The collection home groups categories into editorial blocks with the two latest distinct purchased items by actual transaction date. Future Wants saves wishlist entries with optional estimated prices, product links, notes, and priority; these do not affect owned-item counts or spending. Subscriptions is available as a category, and item details supports saved value check-ins with verdict, usage, repurchase intent, notes, and history. Private item cover photos are implemented: save an item first, then add, replace, or remove its photo from details using a file or a direct HTTPS image link. The enforced limit is 5,000,000 bytes. Wishlist-to-purchase conversion, refunds, recurring subscription billing, and suggested check-in dates are next. See [item photos](docs/item-photos.md). See [item value check-ins](docs/item-worth.md). See [the build plan](docs/build-plan.md) for the product scope.
 
 ## Project connections
 
@@ -20,7 +20,7 @@ The homepage now includes email sign-in, account creation, password-reset screen
 - Dashboard: https://supabase.com/dashboard/project/mkthxogkzllahenbrxle
 - Application tables are in the **app** schema, not public. Select that schema in the table editor.
 
-Five migrations have been applied to the hosted project, including retry receipts for existing-item creation and item value check-ins. Local filenames match its migration history. The repository contains the application scaffold, migration history, and setup instructions.
+Seven migrations have been applied to the hosted project, including retry receipts for existing-item creation, item value check-ins, private item-photo Storage policies, and direct image imports. Local filenames match its migration history. The repository contains the application scaffold, migration history, and setup instructions.
 
 The hosted URL, publishable key, and restricted `inventory_runtime` connection are configured in the ignored `.env.local`. The connection uses `aws-0-us-east-1.pooler.supabase.com:6543` with a generated password kept out of Git. TLS verifies the certificate chain and hostname using the official Supabase root CA bundled in `src/server/db/supabase-ca.ts`. Run `npm run db:check` for a read-only hosted connection check. Supabase CLI authentication/linking is separate from the connected Supabase tool used to apply these migrations.
 
@@ -69,7 +69,7 @@ set `PLAYWRIGHT_MODULE_PATH` to its `playwright/index.js`. Set `UI_TEST_BASE_URL
 for another loopback URL, `UI_TEST_BROWSER_CHANNEL` for another installed browser,
 or `UI_TEST_EVIDENCE_DIR` for screenshots (default `/tmp/inventory-collection-search`).
 
-The current styling verification passed 34 unit/database tests, both fixture browser regressions, the production build, lint, and TypeScript. The schema also passed a clean local reset and cloud RLS checks with rolled-back fixtures. Supabase's security advisories are clear; remaining performance notices identify unused indexes on the empty database. The dependency audit is clear. A scoped esbuild override fixes an advisory in Drizzle Kit's development tooling; introspection was verified with that override.
+The current verification passed 66 unit/API/database tests, real local Auth/Storage checks, a real HTTPS image download, the collection browser regressions, item-photo/direct-link desktop/mobile checks, the production build, lint, and TypeScript. The schema passed a clean local reset, and hosted photo bucket/RLS/grants and import receipts were verified after migration. Auth retains its existing leaked-password-protection advisory (see [item photo notes](docs/item-photos.md)); remaining performance notices identify unused indexes on the empty database. The production dependency audit is clear; Next ESLint tooling has a pre-existing development-only braces advisory. A scoped esbuild override fixes an advisory in Drizzle Kit's development tooling; introspection was verified with that override.
 
 ## API
 
@@ -84,7 +84,11 @@ Every endpoint except health requires `Authorization: Bearer <Supabase access to
 | GET /api/wants | Account-scoped wishlist, priority-first ordering, and `limit`/`offset` pagination. |
 | POST /api/wants | Save a wishlist entry without an expense; requires a UUID `Idempotency-Key` header. |
 | GET /api/collection | Owned collection with exact recorded costs, total count, `q`, `categoryId`, `sort` (newest/name/purchased), `limit`, and `offset`. |
-| GET /api/items/:id | Account-scoped item, purchase records, and up to 20 latest value check-ins. |
+| GET /api/items/:id | Account-scoped item, purchase records, up to 20 latest value check-ins, private cover and pending upload. |
+| POST /api/items/:id/photo/uploads | Reserve one private upload for an existing account-owned item; requires an idempotency key. |
+| POST /api/items/:id/photo/imports | Import a direct HTTPS image into a private reservation; requires an idempotency key. |
+| POST /api/items/:id/photo/uploads/:uploadId/complete | Validate uploaded bytes and atomically attach/replace the cover; requires an idempotency key. |
+| DELETE /api/items/:id/photo | Detach the expected cover and retry Storage cleanup; requires an idempotency key. |
 | POST /api/items/:id/reviews | Append a value check-in with verdict, usage, repurchase intent and notes; requires an idempotency key. |
 | GET /api/items | Owned, unarchived items; `limit` and `offset` pagination. |
 | POST /api/items | Existing item with name/category and optional acquisition date/description; no expense. Requires a UUID `Idempotency-Key` header. |
@@ -130,7 +134,7 @@ Use the Supabase publishable key in the browser; the restricted database connect
 
 Set Supabase Auth's Site URL to the deployed app origin and allow its callback URLs, including `/?mode=recovery`; allow `http://localhost:3000` and its recovery URL for local development. Account creation can require email confirmation depending on the project configuration. Confirmation and password recovery depend on Supabase email delivery; production email delivery has not been verified in this UI pass. Use an appropriate SMTP provider before relying on production email flows.
 
-The collection creates a profile and seven starter categories on first sign-in. New accounts choose one reporting currency. New purchases create spending; “Already owned” creates only an item. Unknown prices/dates are explicitly labeled. Artwork identifies categories and does not represent uploaded item photos.
+The collection creates a profile and seven starter categories on first sign-in. New accounts choose one reporting currency. New purchases create spending; “Already owned” creates only an item. Unknown prices/dates are explicitly labeled. Category artwork is the fallback for items without a private cover photo.
 
 ## Spending view
 
@@ -138,6 +142,6 @@ After signing in, choose **Spending** in the sidebar or mobile navigation. The i
 
 ## Editorial layout and Future Wants
 
-The signed-in app uses three top tabs: Collections, Spending, and Future Wants. Collection blocks remain visible with zero or one purchase. Existing possessions count toward a collection but do not displace recent purchased items. Item panels currently show labeled category artwork; they are not uploaded photos. See [the visual spec and verification notes](docs/design/collections.md).
+The signed-in app uses three top tabs: Collections, Spending, and Future Wants. Collection blocks remain visible with zero or one purchase. Existing possessions count toward a collection but do not displace recent purchased items. Item panels support uploaded private covers, with labeled category artwork as the fallback. See [the visual spec and verification notes](docs/design/collections.md).
 
 Wishlist writes use the existing item-only `existing_item` receipt type, with `state: wishlist` in the validated receipt payload. This keeps the existing migration and old owned-item hashes intact, distinguishes submission content across the two flows, and commits the item and receipt together. No schema change is needed. The first write returns 201; identical retries return 200; conflicting content returns 409. Wishlist conversion, editing, and removal are not included in this styling slice.

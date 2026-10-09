@@ -7,9 +7,12 @@ import { bootstrapInput, collectionInput, existingItemInput, wantInput, wantsLis
 import type { InventoryService } from "../services/inventory";
 import { itemReviewInput } from "../../shared/contracts";
 
-type Dependencies = { verifyToken: (token: string) => Promise<string | null>; service: () => InventoryService };
+import { photoUploadInput, photoRemoveInput, photoImportInput } from "../../shared/photos";
+import type { PhotoService } from "../services/photos";
+
+type Dependencies = { verifyToken: (token: string) => Promise<string | null>; service: () => InventoryService; photos?: (token: string) => PhotoService };
 export function createApi(deps: Dependencies) {
-  const app = new Hono<{ Variables: { userId: string } }>().basePath("/api");
+  const app = new Hono<{ Variables: { userId: string; token: string } }>().basePath("/api");
   app.use("*", secureHeaders());
   app.use("*", bodyLimit({ maxSize: 32 * 1024 }));
   app.get("/health", c => c.json({ status: "ok" }));
@@ -20,6 +23,7 @@ export function createApi(deps: Dependencies) {
     const userId = await deps.verifyToken(bearer.slice(7));
     if (!userId || !z.uuid().safeParse(userId).success) throw new HTTPException(401, { message: "Your session is invalid or expired." });
     c.set("userId", userId);
+    c.set("token", bearer.slice(7));
     await next();
   });
   app.post("/profile/bootstrap", async c => {
@@ -27,7 +31,12 @@ export function createApi(deps: Dependencies) {
     return c.json(await deps.service().bootstrap(c.get("userId"), input));
   });
   app.get("/categories", async c => c.json({ data: await deps.service().categories(c.get("userId")) }));
-  app.get("/collections/overview", async c => c.json(await deps.service().collectionOverview(c.get("userId"))));
+  app.get("/collections/overview", async c => {
+    const overview = await deps.service().collectionOverview(c.get("userId"));
+    const photos = deps.photos?.(c.get("token"));
+    const covers = await photos?.covers(c.get("userId"), overview.data.flatMap(entry => entry.latest.map(item => item.id)));
+    return c.json({ data: overview.data.map(entry => ({ ...entry, latest: entry.latest.map(item => ({ ...item, cover: covers?.get(item.id) ?? null })) })) });
+  });
   app.get("/wants", async c => {
     const input = wantsListInput.parse(c.req.query());
     return c.json(await deps.service().wants(c.get("userId"), input));
@@ -39,7 +48,47 @@ export function createApi(deps: Dependencies) {
     return c.json(result, result.replayed ? 200 : 201);
   });
   app.get("/collection", async c => c.json(await deps.service().collection(c.get("userId"), collectionInput.parse(c.req.query()))));
-  app.get("/items/:id", async c => c.json(await deps.service().itemDetail(c.get("userId"), z.uuid().parse(c.req.param("id")))));
+  app.get("/items/:id", async c => {
+    const id = z.uuid().parse(c.req.param("id"));
+    const detail = await deps.service().itemDetail(c.get("userId"), id);
+    const photos = deps.photos?.(c.get("token"));
+    await photos?.cleanup(c.get("userId"));
+    const [covers, pendingPhoto] = await Promise.all([photos?.covers(c.get("userId"), [id]), photos?.pending(c.get("userId"), id)]);
+    return c.json({ ...detail, cover: covers?.get(id) ?? null, pendingPhoto: pendingPhoto ?? null });
+  });
+  app.post("/items/:id/photo/uploads", async c => {
+    const id = z.uuid().parse(c.req.param("id"));
+    const key = z.uuid().parse(c.req.header("Idempotency-Key"));
+    const input = photoUploadInput.parse(await c.req.json());
+    if (!deps.photos) throw new HTTPException(503, { message: "Photos are unavailable." });
+    const result = await deps.photos(c.get("token")).reserve(c.get("userId"), id, key, input);
+    return c.json(result, result.replayed ? 200 : 201);
+  });
+  app.post("/items/:id/photo/imports", async c => {
+    const id = z.uuid().parse(c.req.param("id"));
+    const key = z.uuid().parse(c.req.header("Idempotency-Key"));
+    const input = photoImportInput.parse(await c.req.json());
+    if (!deps.photos) throw new HTTPException(503, { message: "Photos are unavailable." });
+    const result = await deps.photos(c.get("token")).importFromUrl(c.get("userId"), id, key, input);
+    return c.json(result, result.replayed ? 200 : 201);
+  });
+  app.post("/items/:id/photo/uploads/:uploadId/complete", async c => {
+    const id = z.uuid().parse(c.req.param("id"));
+    const uploadId = z.uuid().parse(c.req.param("uploadId"));
+    const key = z.uuid().parse(c.req.header("Idempotency-Key"));
+    z.object({}).strict().parse(await c.req.json());
+    if (!deps.photos) throw new HTTPException(503, { message: "Photos are unavailable." });
+    const result = await deps.photos(c.get("token")).complete(c.get("userId"), id, uploadId, key);
+    return c.json(result, result.replayed ? 200 : 201);
+  });
+  app.delete("/items/:id/photo", async c => {
+    const id = z.uuid().parse(c.req.param("id"));
+    const key = z.uuid().parse(c.req.header("Idempotency-Key"));
+    const input = photoRemoveInput.parse(await c.req.json());
+    if (!deps.photos) throw new HTTPException(503, { message: "Photos are unavailable." });
+    const result = await deps.photos(c.get("token")).remove(c.get("userId"), id, key, input.expectedCoverId);
+    return c.json(result);
+  });
   app.post("/items/:id/reviews", async c => {
     const id = z.uuid().parse(c.req.param("id"));
     const key = z.uuid().parse(c.req.header("Idempotency-Key"));

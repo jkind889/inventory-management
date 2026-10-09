@@ -238,6 +238,11 @@ export function CollectionScreen({ user }: { user: User }) {
     error: string;
   } | null>(null);
   const [refresh, setRefresh] = useState(0);
+  useEffect(() => {
+    const refreshPhotos = () => setRefresh(v => v + 1);
+    window.addEventListener('inventory:photos-changed', refreshPhotos);
+    return () => window.removeEventListener('inventory:photos-changed', refreshPhotos);
+  }, []);
   const [add, setAdd] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [notice, setNotice] = useState("");

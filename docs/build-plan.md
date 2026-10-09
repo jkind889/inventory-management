@@ -1,6 +1,6 @@
 # Collection app: data model and first build
 
-Status: backend foundation, sign-in, collection interface, and a read-only monthly Spending view are implemented. See README.md for tested endpoints and setup. Collections now has an editorial category overview with two recent purchased items per category, and Future Wants supports persistent wishlist creation and browsing. Spending includes category totals, date-filtered pagination, and linked item details; standalone expense entry, photos, wishlist-to-purchase conversion, refunds/sales, recurring subscription billing, and suggested check-in dates remain future slices. Subscriptions is now a starter category; persistent item value check-ins are implemented as described in [item-worth.md](item-worth.md).
+Status: backend foundation, sign-in, collection interface, and a read-only monthly Spending view are implemented. See README.md for tested endpoints and setup. Collections now has an editorial category overview with two recent purchased items per category, and Future Wants supports persistent wishlist creation and browsing. Spending includes category totals, date-filtered pagination, and linked item details; standalone expense entry, wishlist-to-purchase conversion, refunds/sales, recurring subscription billing, and suggested check-in dates remain future slices. Private cover photos are implemented as described in [item-photos.md](item-photos.md). Subscriptions is now a starter category; persistent item value check-ins are implemented as described in [item-worth.md](item-worth.md).
 
 ## Product scope
 
@@ -23,7 +23,7 @@ Use UUID identifiers. User-owned tables carry `user_id` referencing Supabase Aut
 | subscriptions | id, user_id, category_id, name, amount_minor, currency, interval_unit, interval_count, billing_anchor_on, next_due_on, status, ends_on?, service_url?, archived_at | Recurrence rules and expected prices. Confirmed charges remain separate transaction records. |
 | item_reviews (implemented) | id, user_id, item_id, verdict, usage_frequency?, would_buy_again?, note?, created_at | Append-only item value check-ins; latest 20 shown in details. |
 | check_ins (future extension) | id, user_id, item_id?, subscription_id?, checked_on, usage, satisfaction, would_buy_again?, keep_subscription?, note? | Dated reflections linked to exactly one item or subscription. |
-| item_photos | id, user_id, item_id, storage_path, sort_order | Private Storage objects, with the first image used as the cover. |
+| item_photos (implemented) | id, user_id, item_id, storage_path, status, byte_size, mime_type, checksum, expected_cover_id, width, height, expires_at, cleanup_checked_at | One private cover and one pending upload per saved item; galleries/order are later scope. |
 | operations | id, user_id, idempotency_key, operation_type, request_hash, result_reference | Prevent duplicate compound writes when the client retries. |
 
 Items use these initial states: `wishlist`, `owned`, `sold`, `returned`, and `donated`. Archiving hides a record without rewriting its ownership or spending history. Additional usage states such as stored/lent out can follow once the core flow works.
@@ -82,7 +82,7 @@ Initial indexes follow actual access paths: items by owner/state and owner/categ
 ## First working slice
 
 1. Sign in and open the empty collection.
-2. Choose Add purchase; enter name, category, amount, and purchase date, with an optional photo.
+2. Choose Add purchase; enter name, category, amount, and purchase date, with no photo in the creation form. Add a photo from details after saving.
 3. Submit one authenticated request. Validate input, claim an idempotency key, and insert an owned item plus its expense in a single database transaction.
 4. Return the saved records and update the collection. Reloading must preserve the result.
 5. Show the same expense in the spending list and monthly category totals.
@@ -98,7 +98,10 @@ Initial API surface:
 | GET /api/items/:id | Item details and linked costs. |
 | POST /api/items | Add an existing possession without implicitly recording spending. |
 | POST /api/purchases | Create an owned item and expense atomically; require an idempotency key. |
-| POST /api/items/:id/photos | Attach a verified private upload. |
+| POST /api/items/:id/photo/uploads | Reserve a private upload after verifying the saved item. |
+| POST /api/items/:id/photo/imports | Import validated original bytes from a direct HTTPS image link into a private reservation. |
+| POST /api/items/:id/photo/uploads/:uploadId/complete | Verify the uploaded bytes and attach/replace the private cover. |
+| DELETE /api/items/:id/photo | Detach the expected cover and clean up Storage separately. |
 | GET /api/transactions | Paginated actual spending records for a date range. |
 | GET /api/spending/summary | Gross spending, refunds, sale proceeds, net outflow, and category breakdown. |
 

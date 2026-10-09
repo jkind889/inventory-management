@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
 import { Icon, categoryIcon } from "@/components/icon";
-import { CategoryArtwork } from "@/components/category-artwork";
+import { PhotoCoverImage } from "@/components/photo-cover";
 import {
   formatDate,
   formatMoney,
@@ -25,6 +25,7 @@ export function CollectionOverviewScreen({
   addItem: (category: string) => void;
 }) {
   const [retry, setRetry] = useState(0);
+  const refreshPhotos = useCallback(() => setRetry(v => v + 1), []);
   const key = `${refresh}:${retry}`;
   const [completed, setCompleted] = useState<{
     key: string;
@@ -116,7 +117,7 @@ export function CollectionOverviewScreen({
                           key={item.id}
                           onClick={() => openItem(item.id)}
                         >
-                          <CategoryArtwork category={category.name} />
+                          <PhotoCoverImage cover={item.cover ?? null} category={category.name} name={item.name} refresh={refreshPhotos} />
                           <h3>{item.name}</h3>
                           <p>
                             {item.recordedCostMinor === null

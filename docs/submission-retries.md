@@ -2,7 +2,7 @@
 
 Retry protection is the default for any mutation where repeating an intended
 action could create duplicate records or repeat a side effect. Purchases,
-“Already owned” entries, wants, and item value check-ins implement this contract today. Naturally idempotent
+“Already owned” entries, wants, item value check-ins, and photo reservations/completions/removals implement this contract today. Naturally idempotent
 actions, such as setting a preference to a specific value, may use their own
 atomic implementation if repetition already has the same effect.
 
@@ -69,3 +69,5 @@ payload includes the item ID to reject reuse across targets. See
 [item-worth.md](item-worth.md) for the API contract and form lifetime. Migration
 `20261008172949_subscriptions_and_item_reviews.sql` is applied locally and to the
 configured hosted project.
+
+Photo mutations use `photo_upload`, `photo_import`, `photo_complete`, and `photo_remove` receipts. Include the target item and upload/expected cover in validated receipt content. Storage writes remain outside database transactions; completion verifies immutable original bytes and atomically swaps the cover. URL-import retries first verify stored bytes, and any source re-download must match the original reservation checksum. See [item-photos.md](item-photos.md) for recovery and cleanup. Migrations `20261008221402_item_cover_photos.sql` and `20261009013445_item_photo_imports.sql` are applied locally and to the configured hosted project.

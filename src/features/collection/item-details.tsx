@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
 import { api, errorMessage } from "@/lib/api";
 import { formatDate, formatMoney, type Category, type ItemDetail, type Profile } from "@/shared/collection";
+import { ItemPhoto } from "./item-photo";
 import { ItemWorth } from "./item-worth";
 
 export function ItemDetails({ id, categories, profile }: { id: string; categories: Category[]; profile: Profile }) {
   const [response, setResponse] = useState<{ detail?: ItemDetail; error?: string } | null>(null);
   const [retry, setRetry] = useState(0);
+  const refreshPhoto = useCallback(() => setRetry(v => v + 1), []);
   useEffect(() => {
     const controller = new AbortController();
     api<ItemDetail>(`/items/${id}`, { signal: controller.signal })
@@ -23,6 +25,7 @@ export function ItemDetails({ id, categories, profile }: { id: string; categorie
   return <article className="item-inspector">
     <h1>{item.name}</h1>
     <p className="inspector-meta">{category}<span aria-hidden="true"> / </span>{item.state === "wishlist" ? "Future want" : "Owned"}</p>
+    <ItemPhoto itemId={item.id} name={item.name} category={category} cover={response.detail.cover ?? null} pending={response.detail.pendingPhoto ?? null} refresh={refreshPhoto} />
     <dl className="inspector-fields">
       <div><dt>Collection</dt><dd>{category}</dd></div>
       {item.state !== "wishlist" && <div><dt>Acquired on</dt><dd>{formatDate(item.acquiredOn)}</dd></div>}

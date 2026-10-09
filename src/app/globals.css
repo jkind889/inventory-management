@@ -2087,3 +2087,26 @@ textarea {
 @media (min-width: 701px) {
   .workbench-shell .wants-register-row, .wants-columns { grid-template-columns: minmax(0, 2fr) minmax(0, 1.2fr) minmax(140px, 1.1fr) 95px; }
 }
+
+/* Private item covers retain the existing inspector and artwork layout. */
+.item-photo-section { border-top: 1px solid var(--line, #303030); padding-top: 18px; margin: 18px 0 24px; }
+.item-photo-section h2 { font-size: 14px; margin: 0 0 12px; }
+.item-photo-cover { width: min(100%, 320px); height: 190px; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #151515; border-radius: 4px; }
+.item-cover-image { width: 100%; height: 100%; object-fit: contain; display: block; }
+.item-photo-section .muted { font-size: 12px; line-height: 1.6; margin: 10px 0; }
+.photo-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.photo-actions .button { min-height: 34px; }
+.photo-file-input { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+.photo-local-preview { margin: 12px 0; }
+.photo-local-preview img { max-width: 100%; object-fit: contain; background: #151515; }
+.photo-local-preview p { font-size: 12px; overflow-wrap: anywhere; }
+.photo-error { color: #e8a6a6; font-size: 12px; line-height: 1.6; }
+.item-photo-section progress { width: min(100%, 320px); accent-color: #744e96; margin-bottom: 12px; }
+.purchase-preview > .item-cover-image { height: 100px; width: 100%; }
+
+.photo-preview-frame { position: relative; width: min(100%, 240px); height: 180px; background: #151515; }
+.photo-link-form { width: min(100%, 520px); display: grid; gap: 8px; margin: 12px 0 16px; }
+.photo-link-form label { font-size: 12px; }
+.photo-link-form input { width: 100%; min-width: 0; color: var(--ink); background: var(--surface); border-color: var(--border); }
+.photo-link-form input::placeholder { color: var(--muted); }
+.photo-link-form .muted { margin: 0; }

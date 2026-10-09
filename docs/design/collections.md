@@ -47,10 +47,12 @@ Above-the-fold copy check: the concept's primary heading, subtitle, tabs, brand,
 
 Commands: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, `npm run test:collection-ui`, and `npm run test:collection-home`. Browser tests target the local preview with `UI_TEST_BASE_URL` and the bundled `PLAYWRIGHT_MODULE_PATH`. Screenshot evidence is saved outside the repository in `/tmp/inventory-collection-home` and `/tmp/inventory-collection-search`.
 
-Remaining scope: actual item photo uploads and wishlist-to-purchase conversion/editing/removal. No deployment or Git commit was made by this styling request.
+At the time of this styling request, item photo uploads and wishlist-to-purchase conversion/editing/removal remained outside scope. No deployment or Git commit was made by that styling request.
 
 The subsequent styling revision removes the persistent first-block/tab highlights and changes the hover accent to `#744e96`. Hover backgrounds use white text; category artwork retains its own neutral background and black symbols. Pointer hover is restricted to devices that support it.
 
 Revision validation: lint and diff checks passed. Browser checks confirmed neutral resting backgrounds, exact purple hover backgrounds with white text, and clearing the highlight when the pointer leaves. The existing collection, Spending, wishlist, and responsive checks passed at 1536px, 900px, and 390px. Screenshots are in `/tmp/inventory-hover-update`.
 
 The October 8 MySQL Workbench layout revision supersedes the active Collections overview/grid presentation. See [workbench.md](workbench.md) for the current layout, interaction contract, styling tokens, intentional reference adaptations, and verification results.
+
+The subsequent October 8 [item cover photo release](../item-photos.md) adds private uploads from saved item details and covers in the existing overview artwork slots. Category artwork remains the fallback; compact workbench lists remain text-based.
