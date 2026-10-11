@@ -4,12 +4,15 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/icon";
 import { api } from "@/lib/api";
 import { isCollectionCategory, type Category, type CollectionOverview, type CollectionResponse, type Profile } from "@/shared/collection";
+import { TagFilter } from "@/features/tags/tag-controls";
+import type { Tag } from "@/shared/tags";
 import { CollectionList } from "./collection-list";
 import { WorkbenchInspector, WorkbenchPagination, WorkbenchSidebar } from "./workbench-panels";
 
 type WorkbenchProps = {
   profile: Profile; categories: Category[]; result: CollectionResponse | null;
   loading: boolean; error: string; query: string; category: string; sort: string;
+  tagFilters: Tag[]; changeTags: (tags: Tag[]) => void;
   offset: number; selected: string | null; refresh: number;
   openItem: (id: string | null) => void; filter: (id: string) => void;
   changeQuery: (value: string) => void; changeSort: (value: string) => void;
@@ -17,7 +20,7 @@ type WorkbenchProps = {
 };
 
 export function CollectionWorkbench(props: WorkbenchProps) {
-  const { profile, categories, result, loading, error, query, category, sort, offset, selected, refresh, openItem, filter, changeQuery, changeSort, changePage, retry, addItem } = props;
+  const { tagFilters, changeTags, profile, categories, result, loading, error, query, category, sort, offset, selected, refresh, openItem, filter, changeQuery, changeSort, changePage, retry, addItem } = props;
   const [overview, setOverview] = useState<{ refresh: number; data: CollectionOverview } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -38,10 +41,11 @@ export function CollectionWorkbench(props: WorkbenchProps) {
         <div className="results-toolbar">
           <label className="workbench-search"><Icon name="search" size={16} /><input aria-label="Search your collection" placeholder="Search your collection…" maxLength={200} value={query} onChange={(e) => changeQuery(e.target.value)} /></label>
           <select className="workbench-mobile-category" aria-label="Filter category" value={category} onChange={(e) => filter(e.target.value)}><option value="">All items</option>{available.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          <TagFilter value={tagFilters} onChange={changeTags} />
           <select aria-label="Sort collection" value={sort} onChange={(e) => changeSort(e.target.value)}><option value="newest">Recently added</option><option value="name">Name A–Z</option><option value="purchased">Purchase date</option></select>
         </div>
         <div className="results-scroll" aria-busy={loading}>
-          {error ? <div className="empty-state" role="alert"><h2>Something didn’t load.</h2><p>{error}</p><button className="button secondary" onClick={retry}>Try again</button></div> : loading ? <p className="results-message">Loading your collection…</p> : !result?.data.length ? <div className="empty-state"><h2>No items found.</h2><p>{query || category ? "Try a different search or collection." : "Add your first item to get started."}</p><button className="button secondary" onClick={() => { if (query || category) { changeQuery(""); filter(""); } else addItem(); }}>{query || category ? "Clear filters" : "Add your first item"}</button></div> : <>
+          {error ? <div className="empty-state" role="alert"><h2>Something didn’t load.</h2><p>{error}</p><button className="button secondary" onClick={retry}>Try again</button></div> : loading ? <p className="results-message">Loading your collection…</p> : !result?.data.length ? <div className="empty-state"><h2>No items found.</h2><p>{query || category || tagFilters.length ? "Try a different search, collection, or tag." : "Add your first item to get started."}</p><button className="button secondary" onClick={() => { if (query || category || tagFilters.length) { changeQuery(""); filter(""); changeTags([]); } else addItem(); }}>{query || category || tagFilters.length ? "Clear filters" : "Add your first item"}</button></div> : <>
             <div className="register-columns" aria-hidden="true"><span>Item</span><span>Collection</span><span>Cost</span><span>Acquired on</span></div>
             <CollectionList items={result.data} categories={categories} currency={profile.currency} openItem={openItem} selected={selected} />
           </>}

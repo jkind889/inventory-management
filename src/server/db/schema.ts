@@ -1,3 +1,4 @@
+import type { Tag, TaggedItem } from "../../shared/tags";
 import { sql } from "drizzle-orm";
 import { bigint, boolean, date, integer, jsonb, pgSchema, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { usageFrequencies, worthVerdicts } from "../../shared/reviews";
@@ -24,13 +25,19 @@ export const items = appSchema.table("items", {
   targetAmountMinor: bigint("target_amount_minor", { mode: "number" }), priority: smallint("priority"),
   archivedAt: timestamp("archived_at", { withTimezone: true, mode: "string" }), ...audit(),
 });
+export const tags = appSchema.table("tags", {
+  id: uuid("id").primaryKey().defaultRandom(), userId: uuid("user_id").notNull(), name: text("name").notNull(),
+});
+export const itemTags = appSchema.table("item_tags", {
+  userId: uuid("user_id").notNull(), itemId: uuid("item_id").notNull(), tagId: uuid("tag_id").notNull(), slot: smallint("slot").notNull(),
+});
 export const transactions = appSchema.table("transactions", {
   id: uuid("id").primaryKey().defaultRandom(), userId: uuid("user_id").notNull(), categoryId: uuid("category_id").notNull(),
   itemId: uuid("item_id"), kind: text("kind").notNull().default("expense"),
   amountMinor: bigint("amount_minor", { mode: "number" }).notNull(), currency: text("currency").notNull(),
   occurredOn: date("occurred_on").notNull(), merchant: text("merchant"), note: text("note"), ...audit(),
 });
-export type PurchaseResult = { item: typeof items.$inferSelect; transaction: typeof transactions.$inferSelect };
+export type PurchaseResult = { item: TaggedItem<typeof items.$inferSelect>; transaction: typeof transactions.$inferSelect };
 export const itemReviews = appSchema.table("item_reviews", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").notNull(), itemId: uuid("item_id").notNull(),
@@ -54,7 +61,8 @@ export type OperationResults = {
   photo_complete: { photoId: string };
   photo_remove: { removedPhotoId: string };
   purchase: PurchaseResult;
-  existing_item: { item: typeof items.$inferSelect };
+  existing_item: { item: TaggedItem<typeof items.$inferSelect> };
+  item_tags: { itemId: string; tags: Tag[] };
   item_review: { review: typeof itemReviews.$inferSelect };
 };
 export const operations = appSchema.table("operations", {

@@ -128,6 +128,7 @@ await context.route("**/api/**", async (route) => {
   const path = url.pathname;
   if (path === "/api/profile/bootstrap")
     return route.fulfill({ json: { profile } });
+  if (path === "/api/tags") return route.fulfill({ json: { data: [], total: 0, limit: 20, offset: 0 } });
   if (path === "/api/categories")
     return route.fulfill({ json: { data: categories } });
   if (path === "/api/collections/overview")

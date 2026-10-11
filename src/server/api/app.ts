@@ -1,9 +1,10 @@
+import { itemTagsInput } from "../../shared/tags";
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import { z, ZodError } from "zod";
-import { bootstrapInput, collectionInput, existingItemInput, wantInput, wantsListInput, paginationInput, purchaseInput, spendingInput, transactionListInput } from "../../shared/contracts";
+import { tagsListInput, bootstrapInput, collectionInput, existingItemInput, wantInput, wantsListInput, paginationInput, purchaseInput, spendingInput, transactionListInput } from "../../shared/contracts";
 import type { InventoryService } from "../services/inventory";
 import { itemReviewInput } from "../../shared/contracts";
 
@@ -38,7 +39,7 @@ export function createApi(deps: Dependencies) {
     return c.json({ data: overview.data.map(entry => ({ ...entry, latest: entry.latest.map(item => ({ ...item, cover: covers?.get(item.id) ?? null })) })) });
   });
   app.get("/wants", async c => {
-    const input = wantsListInput.parse(c.req.query());
+    const input = wantsListInput.parse({ ...c.req.query(), tagId: c.req.queries("tagId") });
     return c.json(await deps.service().wants(c.get("userId"), input));
   });
   app.post("/wants", async c => {
@@ -47,7 +48,14 @@ export function createApi(deps: Dependencies) {
     const result = await deps.service().addWant(c.get("userId"), key, input);
     return c.json(result, result.replayed ? 200 : 201);
   });
-  app.get("/collection", async c => c.json(await deps.service().collection(c.get("userId"), collectionInput.parse(c.req.query()))));
+  app.get("/collection", async c => c.json(await deps.service().collection(c.get("userId"), collectionInput.parse({ ...c.req.query(), tagId: c.req.queries("tagId") }))));
+  app.get("/tags", async c => c.json(await deps.service().tags(c.get("userId"), tagsListInput.parse(c.req.query()))));
+  app.put("/items/:id/tags", async c => {
+    const id = z.uuid().parse(c.req.param("id"));
+    const key = z.uuid().parse(c.req.header("Idempotency-Key"));
+    const input = itemTagsInput.parse(await c.req.json());
+    return c.json(await deps.service().setItemTags(c.get("userId"), id, key, input.tags));
+  });
   app.get("/items/:id", async c => {
     const id = z.uuid().parse(c.req.param("id"));
     const detail = await deps.service().itemDetail(c.get("userId"), id);

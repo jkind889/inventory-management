@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "@/lib/api";
+import { TagChips, TagFilter, TagPicker } from "@/features/tags/tag-controls";
+import { TAGS_CHANGED, type Tag } from "@/shared/tags";
 import { Dialog } from "@/components/dialog";
 import { Icon } from "@/components/icon";
 import { WorkbenchInspector, WorkbenchPagination, WorkbenchSidebar } from "@/features/collection/workbench-panels";
@@ -30,11 +32,13 @@ function AddWant({
   categoryId: string;
 }) {
   const [busy, setBusy] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
+  const [pendingTag, setPendingTag] = useState(false);
   const [error, setError] = useState("");
   const attempt = useRef<SubmissionAttempt | null>(null);
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || pendingTag) return;
     const form = new FormData(event.currentTarget);
     const price = String(form.get("price") || "").trim();
     const targetAmountMinor = !price
@@ -49,6 +53,7 @@ function AddWant({
     const body = JSON.stringify({
       name: String(form.get("name")).trim(),
       categoryId: String(form.get("category")),
+      ...(tags.length ? { tags } : {}),
       targetAmountMinor,
       productUrl: String(form.get("url") || "").trim() || null,
       priority: Number(form.get("priority")),
@@ -131,6 +136,7 @@ function AddWant({
             <textarea name="notes" maxLength={5000} rows={3} />
           </label>
         </fieldset>
+        <TagPicker value={tags} onChange={setTags} pendingChanged={setPendingTag} disabled={busy} />
         <p className="field-help">Estimated prices don’t count as spending.</p>
         {error && (
           <p className="form-message error" role="alert">
@@ -146,7 +152,7 @@ function AddWant({
           >
             Cancel
           </button>
-          <button className="button primary" disabled={busy}>
+          <button className="button primary" disabled={busy || pendingTag}>
             {busy ? "Saving…" : "Save want"}
             <Icon name="plus" size={18} />
           </button>
@@ -162,10 +168,11 @@ export function WantsScreen({ profile, categories }: { profile: Profile; categor
   const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [category, setCategory] = useState("");
+  const [tagFilters, setTagFilters] = useState<Tag[]>([]);
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("priority");
-  const key = JSON.stringify([offset, refresh, category, search, sort]);
+  const key = JSON.stringify([offset, refresh, category, search, sort, tagFilters]);
   const [completed, setCompleted] = useState<{
     key: string;
     result?: WantsResponse;
@@ -179,18 +186,27 @@ export function WantsScreen({ profile, categories }: { profile: Profile; categor
     const controller = new AbortController();
     const params = new URLSearchParams({ limit: "12", offset: String(offset), q: search, sort });
     if (category) params.set("categoryId", category);
+    tagFilters.forEach(tag => params.append("tagId", tag.id));
     api<WantsResponse>(`/wants?${params}`, { signal: controller.signal })
       .then((result) => {
-        if (!controller.signal.aborted) setCompleted({ key, result });
+        if (!controller.signal.aborted) {
+          setCompleted({ key, result });
+          setSelected(current => current && !result.data.some(item => item.id === current) ? null : current);
+        }
       })
       .catch((error) => {
         if (!controller.signal.aborted) setCompleted({ key, error: errorMessage(error) });
       });
     return () => controller.abort();
-  }, [key, offset, category, search, sort]);
+  }, [key, offset, category, search, sort, tagFilters]);
   const ready = completed?.key === key && query === search;
   const result = ready ? completed?.result : undefined;
   const activeName = categories.find((c) => c.id === category)?.name ?? "All wants";
+  useEffect(() => {
+    const changed = () => { setRefresh(value => value + 1); setOffset(0); };
+    window.addEventListener(TAGS_CHANGED, changed);
+    return () => window.removeEventListener(TAGS_CHANGED, changed);
+  }, []);
   function filter(id: string) {
     setCategory(id);
     setOffset(0);
@@ -224,6 +240,7 @@ export function WantsScreen({ profile, categories }: { profile: Profile; categor
                 <option value="">All wants</option>
                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              <TagFilter value={tagFilters} onChange={tags => { setTagFilters(tags); setOffset(0); setSelected(null); }} />
               <select aria-label="Sort future wants" value={sort} onChange={(e) => { setSort(e.target.value); setOffset(0); setSelected(null); }}>
                 <option value="priority">High priority first</option>
                 <option value="newest">Recently added</option>
@@ -235,11 +252,11 @@ export function WantsScreen({ profile, categories }: { profile: Profile; categor
                 <div className="empty-state" role="alert"><h2>Future Wants couldn’t load.</h2><p>{completed.error}</p><button className="button secondary" onClick={() => setRefresh((v) => v + 1)}>Try again</button></div>
               ) : !result?.data.length ? (
                 <div className="empty-state">
-                  <h2>{search || category ? "No future wants found." : "A little room for possibility."}</h2>
-                  <p>{search || category ? "Try a different search or collection." : "Save something you’re considering, with a link or an estimated price."}</p>
-                  <button className="button secondary" disabled={!categories.length && !search && !category} onClick={() => {
-                    if (search || category) { setQuery(""); filter(""); } else setAdd(true);
-                  }}>{search || category ? "Clear filters" : "Add your first want"}</button>
+                  <h2>{search || category || tagFilters.length ? "No future wants found." : "A little room for possibility."}</h2>
+                  <p>{search || category || tagFilters.length ? "Try a different search, collection, or tag." : "Save something you’re considering, with a link or an estimated price."}</p>
+                  <button className="button secondary" disabled={!categories.length && !search && !category && !tagFilters.length} onClick={() => {
+                    if (search || category || tagFilters.length) { setQuery(""); filter(""); setTagFilters([]); } else setAdd(true);
+                  }}>{search || category || tagFilters.length ? "Clear filters" : "Add your first want"}</button>
                 </div>
               ) : (
                 <>
@@ -251,7 +268,7 @@ export function WantsScreen({ profile, categories }: { profile: Profile; categor
                       const priority = item.priority === 1 ? "High" : item.priority === 3 ? "Low" : "Medium";
                       return <li key={item.id}>
                         <button className="collection-register-row wants-register-row" aria-pressed={selected === item.id} aria-label={`${item.name}, ${name}, ${price}, ${priority} priority`} onClick={() => setSelected(item.id)}>
-                          <h2 className="register-name">{item.name}</h2>
+                          <span className="register-item"><h2 className="register-name">{item.name}</h2><TagChips tags={item.tags} compact /></span>
                           <span className="register-category">{name}</span>
                           <span className="register-price" aria-label={price}>{item.targetAmountMinor === null ? "—" : price}</span>
                           <span className="register-date">{priority}</span>
@@ -274,6 +291,8 @@ export function WantsScreen({ profile, categories }: { profile: Profile; categor
         setAdd(false);
         setQuery("");
         setSearch("");
+        setTagFilters([]);
+        window.dispatchEvent(new CustomEvent(TAGS_CHANGED));
         setOffset(0);
         setSelected(null);
         setRefresh((v) => v + 1);

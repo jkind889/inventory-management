@@ -1,3 +1,4 @@
+import { TagChips } from "@/features/tags/tag-controls";
 import {
   formatDate,
   formatMoney,
@@ -36,7 +37,7 @@ export function CollectionList({
               aria-pressed={selected === item.id}
               aria-label={`${item.name}, ${category}, ${price}, ${date}`}
             >
-              <h2 className="register-name">{item.name}</h2>
+              <span className="register-item"><h2 className="register-name">{item.name}</h2><TagChips tags={item.tags} compact /></span>
               <span className="register-category">{category}</span>
               <span className="register-price" aria-label={price}>
                 {item.recordedCostMinor === null ? "—" : price}

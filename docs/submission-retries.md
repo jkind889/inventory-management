@@ -71,3 +71,8 @@ payload includes the item ID to reject reuse across targets. See
 configured hosted project.
 
 Photo mutations use `photo_upload`, `photo_import`, `photo_complete`, and `photo_remove` receipts. Include the target item and upload/expected cover in validated receipt content. Storage writes remain outside database transactions; completion verifies immutable original bytes and atomically swaps the cover. URL-import retries first verify stored bytes, and any source re-download must match the original reservation checksum. See [item-photos.md](item-photos.md) for recovery and cleanup. Migrations `20261008221402_item_cover_photos.sql` and `20261009013445_item_photo_imports.sql` are applied locally and to the configured hosted project.
+
+Tag saves use `item_tags` receipts with the target item and sorted normalized tag
+names. Creation flows attach tags within their existing transaction; omitted or
+empty tags retain historical hashes. Old saved results without tags replay with
+an empty tag array. See [item-tags.md](item-tags.md) for limits and filtering.

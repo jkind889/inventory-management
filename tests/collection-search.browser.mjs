@@ -42,6 +42,7 @@ await context.route("**/auth/v1/**", route => route.fulfill({ json: { user } }))
 await context.route("**/api/**", async route => {
   const url = new URL(route.request().url());
   if (url.pathname === "/api/profile/bootstrap") return route.fulfill({ json: { profile: { userId, currency: "USD", timezone: "America/New_York", displayName: "Test collection" } } });
+  if (url.pathname === "/api/tags") return route.fulfill({ json: { data: [], total: 0, limit: 20, offset: 0 } });
   if (url.pathname === "/api/categories") return route.fulfill({ json: { data: [{ id: categoryId, userId, name: "Furniture", archivedAt: null }] } });
   if (url.pathname === "/api/collections/overview") return route.fulfill({ json: { data: [{ category: { id: categoryId, name: "Furniture" }, total: fixtures.length, latest: [] }] } });
   assert.equal(url.pathname, "/api/collection", "Unexpected API call in fixture browser");

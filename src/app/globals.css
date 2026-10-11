@@ -2110,3 +2110,37 @@ textarea {
 .photo-link-form input { width: 100%; min-width: 0; color: var(--ink); background: var(--surface); border-color: var(--border); }
 .photo-link-form input::placeholder { color: var(--muted); }
 .photo-link-form .muted { margin: 0; }
+
+/* Tags share the workbench's compact neutral controls. */
+.tag-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; }
+.tag-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 3px 6px; border: 1px solid #55565b; border-radius: 3px; font: 11px/1.4 Menlo, Monaco, monospace; overflow-wrap: anywhere; white-space: normal; background: #2c2d32; color: #d8dbe2; }
+.tag-chip button { padding: 0 3px; flex-shrink: 0; line-height: 1; color: inherit; background: none; border: 0; }
+.tag-picker { border: 0; padding: 0; margin: 16px 0; min-width: 0; }
+.item-form fieldset.tag-picker { display: block; }
+.tag-picker legend { margin-bottom: 10px; font-size: 13px; }
+.tag-picker .tag-chips { margin-bottom: 10px; }
+.tag-picker .field { margin-bottom: 5px; }
+.tag-picker .field-help { margin: 5px 0; }
+.tag-suggestions, .tag-page-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 12px; }
+.tag-suggestions > button, .tag-page-actions button { padding: 5px 8px; border: 1px solid #55565b; border-radius: 3px; background: #2c2d32; color: #d8dbe2; }
+.item-tags { margin: 22px 0; }
+.tag-section-heading, .tag-editor-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.tag-section-heading h2 { font-size: 14px; font-weight: 500; }
+.tag-editor-actions { justify-content: flex-end; margin-top: 14px; }
+.tag-filter { position: relative; min-width: 0; max-width: 320px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.tag-filter > .button { padding: 6px 10px; font-size: 12px; height: auto; flex-shrink: 0; }
+.tag-filter > .tag-chips { margin-top: 0; }
+.tag-filter-panel { position: absolute; top: calc(100% + 5px); right: 0; z-index: 20; width: min(310px, calc(100vw - 32px)); max-height: 300px; overflow: auto; padding: 14px; background: #242528; border: 1px solid #55565b; box-shadow: 0 8px 24px #0005; color: #d8dbe2; font-size: 12px; }
+.tag-filter-panel .field { margin-bottom: 8px; }
+.tag-filter-panel > .text-button { margin-top: 10px; }
+.tag-filter-options { display: grid; gap: 10px; margin-top: 12px; }
+.tag-filter-options label { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.tag-filter-options input { width: auto; margin: 0; }
+.register-item { display: block; min-width: 0; }
+.register-item .tag-chips { margin-top: 6px; }
+.workbench-shell .register-item .register-name { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .workbench-shell .register-item { grid-column: 1; grid-row: 1; }
+  .tag-filter > .button { height: auto; }
+  .tag-filter-panel { left: 0; right: auto; }
+}
