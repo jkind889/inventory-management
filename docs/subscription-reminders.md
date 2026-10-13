@@ -81,6 +81,6 @@ When ready to deploy:
 
 ## Follow-ups
 
-The October 13 pagination fix adds `20261013153443_reminder_account_pagination.sql`. Apply this migration to the hosted database before running the updated worker against it. The original discovery signature remains available for older callers during rollout. Local migration and runtime-role permissions are verified; this fix has not been applied to the hosted database.
+The October 13 pagination fix adds `20261013153443_reminder_account_pagination.sql`, now applied locally and to the hosted database with matching migration history. The original discovery signature remains available for older callers during rollout. Both signatures retain the fixed search path and allow execution only by the runtime role, excluding `anon` and `authenticated`. Hosted discovery queries and the restricted app connection are verified. Security advisors show no new issue; the existing Auth leaked-password warning and intentional no-policy webhook ledger notice remain.
 
 Owned sender domain and hosted scheduling, browser push, confirmed subscription charges, custom cadence, snooze, pauses/reactivation, bulk overdue catch-up and subscription-specific keep/cancel reviews remain separate work. Expected fees must never create expenses automatically. This implements the reminder part of [reminders-and-photos.md](reminders-and-photos.md); confirmed-charge accounting in [build-plan.md](build-plan.md) stays deferred.
