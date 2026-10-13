@@ -8,6 +8,7 @@ import { TagFilter } from "@/features/tags/tag-controls";
 import type { Tag } from "@/shared/tags";
 import { CollectionList } from "./collection-list";
 import { WorkbenchInspector, WorkbenchPagination, WorkbenchSidebar } from "./workbench-panels";
+import { RenewalsPanel, useSubscriptions } from "@/features/subscriptions/subscriptions";
 
 type WorkbenchProps = {
   profile: Profile; categories: Category[]; result: CollectionResponse | null;
@@ -22,6 +23,9 @@ type WorkbenchProps = {
 export function CollectionWorkbench(props: WorkbenchProps) {
   const { tagFilters, changeTags, profile, categories, result, loading, error, query, category, sort, offset, selected, refresh, openItem, filter, changeQuery, changeSort, changePage, retry, addItem } = props;
   const [overview, setOverview] = useState<{ refresh: number; data: CollectionOverview } | null>(null);
+  const reminders = useSubscriptions();
+  const [renewalsOpen, setRenewalsOpen] = useState(false);
+  function showRenewals() { setRenewalsOpen(true); openItem(null); }
   useEffect(() => {
     const controller = new AbortController();
     api<CollectionOverview>("/collections/overview", { signal: controller.signal })
@@ -33,14 +37,15 @@ export function CollectionWorkbench(props: WorkbenchProps) {
   const counts = overview?.refresh === refresh ? new Map(overview.data.data.map((entry) => [entry.category.id, entry.total])) : null;
   const activeName = categories.find((c) => c.id === category)?.name ?? "All items";
   return <div className="collection-workbench">
-    <WorkbenchSidebar categories={available} category={category} filter={filter} counts={counts} />
+    <WorkbenchSidebar categories={available} category={category} filter={id => { setRenewalsOpen(false); filter(id); }} counts={counts} />
     <div className="workbench-workspace">
-      <WorkbenchInspector selected={selected} categories={categories} profile={profile} close={() => openItem(null)} />
+      <WorkbenchInspector selected={selected} categories={categories} profile={profile} close={() => openItem(null)}
+        emptyContent={renewalsOpen || activeName.toLowerCase() === "subscriptions" ? <RenewalsPanel {...reminders} profile={profile} categories={categories} openItem={openItem} /> : reminders.data?.attentionCount ? <div className="inspector-empty"><div className="renewal-home-alert"><h2>{reminders.data.attentionCount} {reminders.data.attentionCount === 1 ? "renewal needs" : "renewals need"} attention</h2><p>Review upcoming and unresolved subscription dates.</p><button className="button secondary" onClick={showRenewals}>View renewals</button></div><h1>Select an item</h1><p>Choose a row below to view its information and purchase record.</p></div> : undefined} />
       <section className="workbench-results" aria-label="Items">
-        <header className="results-heading"><h2>Items <span>/ {activeName}</span></h2><button className="button secondary" onClick={addItem}><Icon name="plus" size={16} />Add item</button></header>
+        <header className="results-heading"><h2>Items <span>/ {activeName}</span></h2><div className="worth-actions"><button className="button secondary" onClick={showRenewals}>Renewals{reminders.data?.attentionCount ? ` (${reminders.data.attentionCount})` : ""}</button><button className="button secondary" onClick={addItem}><Icon name="plus" size={16} />Add item</button></div></header>
         <div className="results-toolbar">
           <label className="workbench-search"><Icon name="search" size={16} /><input aria-label="Search your collection" placeholder="Search your collection…" maxLength={200} value={query} onChange={(e) => changeQuery(e.target.value)} /></label>
-          <select className="workbench-mobile-category" aria-label="Filter category" value={category} onChange={(e) => filter(e.target.value)}><option value="">All items</option>{available.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+          <select className="workbench-mobile-category" aria-label="Filter category" value={category} onChange={(e) => { setRenewalsOpen(false); filter(e.target.value); }}><option value="">All items</option>{available.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
           <TagFilter value={tagFilters} onChange={changeTags} />
           <select aria-label="Sort collection" value={sort} onChange={(e) => changeSort(e.target.value)}><option value="newest">Recently added</option><option value="name">Name A–Z</option><option value="purchased">Purchase date</option></select>
         </div>

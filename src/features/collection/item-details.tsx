@@ -7,6 +7,7 @@ import { formatDate, formatMoney, type Category, type ItemDetail, type Profile }
 import { ItemPhoto } from "./item-photo";
 import { ItemTags } from "@/features/tags/item-tags";
 import { ItemWorth } from "./item-worth";
+import { ItemSubscription } from "@/features/subscriptions/subscriptions";
 
 export function ItemDetails({ id, categories, profile }: { id: string; categories: Category[]; profile: Profile }) {
   const [response, setResponse] = useState<{ detail?: ItemDetail; error?: string } | null>(null);
@@ -38,6 +39,7 @@ export function ItemDetails({ id, categories, profile }: { id: string; categorie
       {item.description && <div><dt>Notes</dt><dd className="inspector-note">{item.description}</dd></div>}
     </dl>
     {item.productUrl && <a className="text-button" href={item.productUrl} target="_blank" rel="noopener noreferrer">View product <Icon name="arrow" size={16} /></a>}
+    {item.state === "owned" && <ItemSubscription itemId={item.id} profile={profile} categories={categories} />}
     {item.state !== "wishlist" && <ItemWorth itemId={item.id} reviews={reviews} timezone={profile.timezone} />}
     <section className="inspector-purchases">
       <h2>Purchase record</h2>

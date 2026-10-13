@@ -12,6 +12,7 @@ import { CollectionWorkbench } from "./collection-workbench";
 import { ItemDetails } from "./item-details";
 import { WantsScreen } from "@/features/wants/wants-screen";
 import { SpendingScreen } from "@/features/spending/spending-screen";
+import { SUBSCRIPTIONS_CHANGED } from "@/features/subscriptions/subscriptions";
 import { currencies } from "@/shared/contracts";
 import {
   getSubmissionAttempt,
@@ -245,10 +246,16 @@ export function CollectionScreen({ user }: { user: User }) {
     error: string;
   } | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [linkedItem, setLinkedItem] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const id = new URLSearchParams(window.location.search).get("item");
+    return id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;
+  });
   useEffect(() => {
     const refreshPhotos = () => setRefresh(v => v + 1);
     window.addEventListener('inventory:photos-changed', refreshPhotos);
-    return () => window.removeEventListener('inventory:photos-changed', refreshPhotos);
+    window.addEventListener(SUBSCRIPTIONS_CHANGED, refreshPhotos);
+    return () => { window.removeEventListener('inventory:photos-changed', refreshPhotos); window.removeEventListener(SUBSCRIPTIONS_CHANGED, refreshPhotos); };
   }, []);
   const [add, setAdd] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -322,7 +329,8 @@ export function CollectionScreen({ user }: { user: User }) {
     })
       .then((data) => {
         if (!controller.signal.aborted) {
-          setSelected(current => current && !data.data.some(item => item.id === current) ? null : current);
+          // Renewal links may select an item outside the current results page.
+          // Filter and pagination handlers clear selection when their inputs change.
           setCompletedRequest({
             key: requestKey,
             result: data,
@@ -520,6 +528,7 @@ export function CollectionScreen({ user }: { user: User }) {
           />
         </Dialog>
       )}
+      {linkedItem && profile && <Dialog title="Subscription details" close={() => { setLinkedItem(null); const url = new URL(window.location.href); url.searchParams.delete("item"); window.history.replaceState(null, "", url); }} drawer><ItemDetails key={linkedItem} id={linkedItem} profile={profile} categories={categories} /></Dialog>}
     </div>
   );
 }

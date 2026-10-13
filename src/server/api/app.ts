@@ -10,13 +10,47 @@ import { itemReviewInput } from "../../shared/contracts";
 
 import { photoUploadInput, photoRemoveInput, photoImportInput } from "../../shared/photos";
 import type { PhotoService } from "../services/photos";
+import type { SubscriptionService } from "../services/subscriptions";
+import { subscriptionCreateInput, subscriptionEditInput, subscriptionAdvanceInput, subscriptionStopInput, reminderPreferencesInput } from "../../shared/subscriptions";
+import { safeEqual, verifyResendWebhook } from "../services/reminder-email";
+import type { createReminderEmailService } from "../services/reminder-email";
 
-type Dependencies = { verifyToken: (token: string) => Promise<string | null>; service: () => InventoryService; photos?: (token: string) => PhotoService };
+type Dependencies = { verifyToken: (token: string) => Promise<string | null>; service: () => InventoryService; photos?: (token: string) => PhotoService;
+  subscriptions?: () => SubscriptionService; reminderEmail?: () => ReturnType<typeof createReminderEmailService> };
 export function createApi(deps: Dependencies) {
   const app = new Hono<{ Variables: { userId: string; token: string } }>().basePath("/api");
   app.use("*", secureHeaders());
   app.use("*", bodyLimit({ maxSize: 32 * 1024 }));
   app.get("/health", c => c.json({ status: "ok" }));
+  app.post("/internal/reminders/run", async c => {
+    const secret = process.env.REMINDER_WORKER_SECRET;
+    if (!secret || !safeEqual(c.req.header("Authorization") ?? "", `Bearer ${secret}`)) throw new HTTPException(401, { message: "Unauthorized." });
+    if (!deps.reminderEmail) throw new HTTPException(503, { message: "Reminder delivery is unavailable." });
+    c.header("Cache-Control", "no-store");
+    return c.json(await deps.reminderEmail().run());
+  });
+  app.post("/reminders/webhook", async c => {
+    const secret = process.env.RESEND_WEBHOOK_SECRET;
+    const body = await c.req.text();
+    const eventId = secret ? verifyResendWebhook(body, c.req.raw.headers, secret) : null;
+    if (!eventId) throw new HTTPException(401, { message: "Invalid webhook signature." });
+    const event = z.object({ type: z.string(), data: z.object({ email_id: z.string().min(1), tags: z.record(z.string(), z.string()).optional() }) }).parse(JSON.parse(body));
+    if (!deps.reminderEmail) throw new HTTPException(503, { message: "Reminder delivery is unavailable." });
+    if (["email.sent", "email.delivered", "email.bounced", "email.complained", "email.failed"].includes(event.type)) await deps.reminderEmail().webhook(eventId, event);
+    return c.json({ received: true });
+  });
+  app.get("/reminders/unsubscribe", c => {
+    const token = z.string().min(1).max(300).regex(/^[A-Za-z0-9_.-]+$/).parse(c.req.query("token"));
+    c.header("Cache-Control", "no-store");
+    c.header("Referrer-Policy", "no-referrer");
+    return c.html(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Reminder email settings</title><main style="font-family:Arial;max-width:520px;margin:15vh auto;padding:24px"><h1>Stop reminder emails?</h1><p>Your in-app renewal reminders will remain available.</p><form method="post" action="?token=${encodeURIComponent(token)}"><button style="padding:12px 20px">Unsubscribe from reminder emails</button></form></main></html>`);
+  });
+  app.post("/reminders/unsubscribe", async c => {
+    if (!deps.reminderEmail) throw new HTTPException(503, { message: "Reminder delivery is unavailable." });
+    await deps.reminderEmail().unsubscribe(z.string().max(300).parse(c.req.query("token")));
+    c.header("Cache-Control", "no-store");
+    return c.html('<!doctype html><html lang="en"><meta charset="utf-8"><title>Unsubscribed</title><main style="font-family:Arial;max-width:520px;margin:15vh auto;padding:24px"><h1>Reminder emails are off.</h1><p>Your in-app reminders are still available. You can enable email again in your subscription settings.</p><a href="/">Open your collection</a></main></html>');
+  });
   app.use("*", async (c, next) => {
     c.header("Cache-Control", "private, no-store");
     const bearer = c.req.header("Authorization");
@@ -32,6 +66,21 @@ export function createApi(deps: Dependencies) {
     return c.json(await deps.service().bootstrap(c.get("userId"), input));
   });
   app.get("/categories", async c => c.json({ data: await deps.service().categories(c.get("userId")) }));
+  const subscriptionService = () => {
+    if (!deps.subscriptions) throw new HTTPException(503, { message: "Subscription tracking is unavailable." });
+    return deps.subscriptions();
+  };
+  app.get("/subscriptions", async c => c.json(await subscriptionService().list(c.get("userId"))));
+  app.get("/subscriptions/items/:id", async c => c.json({ subscription: await subscriptionService().forItem(c.get("userId"), z.uuid().parse(c.req.param("id"))) }));
+  app.post("/subscriptions", async c => {
+    const input = subscriptionCreateInput.parse(await c.req.json());
+    const result = await subscriptionService().create(c.get("userId"), z.uuid().parse(c.req.header("Idempotency-Key")), input);
+    return c.json(result, result.replayed ? 200 : 201);
+  });
+  app.post("/subscriptions/:id/edit", async c => c.json(await subscriptionService().edit(c.get("userId"), z.uuid().parse(c.req.header("Idempotency-Key")), z.uuid().parse(c.req.param("id")), subscriptionEditInput.parse(await c.req.json()))));
+  app.post("/subscriptions/:id/advance", async c => c.json(await subscriptionService().advance(c.get("userId"), z.uuid().parse(c.req.header("Idempotency-Key")), z.uuid().parse(c.req.param("id")), subscriptionAdvanceInput.parse(await c.req.json()))));
+  app.post("/subscriptions/:id/stop", async c => c.json(await subscriptionService().stop(c.get("userId"), z.uuid().parse(c.req.header("Idempotency-Key")), z.uuid().parse(c.req.param("id")), subscriptionStopInput.parse(await c.req.json()))));
+  app.post("/reminders/preferences", async c => c.json(await subscriptionService().preferences(c.get("userId"), z.uuid().parse(c.req.header("Idempotency-Key")), reminderPreferencesInput.parse(await c.req.json()))));
   app.get("/collections/overview", async c => {
     const overview = await deps.service().collectionOverview(c.get("userId"));
     const photos = deps.photos?.(c.get("token"));

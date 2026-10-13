@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Icon } from "@/components/icon";
 import type { Category, Profile } from "@/shared/collection";
 import { ItemDetails } from "./item-details";
@@ -41,12 +41,13 @@ export function WorkbenchSidebar({
   );
 }
 
-export function WorkbenchInspector({ selected, categories, profile, close, wants = false }: {
+export function WorkbenchInspector({ selected, categories, profile, close, wants = false, emptyContent }: {
   selected: string | null;
   categories: Category[];
   profile: Profile;
   close: () => void;
   wants?: boolean;
+  emptyContent?: ReactNode;
 }) {
   return (
     <section className="workbench-detail" aria-label="Item details">
@@ -55,7 +56,7 @@ export function WorkbenchInspector({ selected, categories, profile, close, wants
         {selected && <button className="icon-button" aria-label="Close item details" onClick={close}><Icon name="close" size={16} /></button>}
       </header>
       <div className="inspector-scroll" aria-live="polite">
-        {selected ? <ItemDetails key={selected} id={selected} categories={categories} profile={profile} /> : (
+        {selected ? <ItemDetails key={selected} id={selected} categories={categories} profile={profile} /> : emptyContent ?? (
           <div className="inspector-empty">
             <Icon name="box" size={32} />
             <h1>{wants ? "Select a future want" : "Select an item"}</h1>

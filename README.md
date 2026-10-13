@@ -11,7 +11,7 @@ A desktop-first collection and purchase tracker. Built with Next.js, React, Type
 - Atomic item/expense creation, existing-item entry, and date-based spending totals.
 - Local integration tests covering real Auth, API requests, transactions, and account isolation.
 
-The homepage now includes email sign-in, account creation, password-reset screens, and a responsive collection interface. Search, category filters, sorting, grid/list views, item details, new purchases, and existing-item entry use the authenticated Hono API. The Spending view shows a selected month’s total, category breakdown, and paginated purchase history with linked item details. The collection home groups categories into editorial blocks with the two latest distinct purchased items by actual transaction date. Future Wants saves wishlist entries with optional estimated prices, product links, notes, and priority; these do not affect owned-item counts or spending. Subscriptions is available as a category, and item details supports saved value check-ins with verdict, usage, repurchase intent, notes, and history. Private item cover photos are implemented: save an item first, then add, replace, or remove its photo from details using a file or a direct HTTPS image link. The enforced limit is 5,000,000 bytes. Wishlist-to-purchase conversion, refunds, recurring subscription billing, and suggested check-in dates are next. See [item photos](docs/item-photos.md). See [item value check-ins](docs/item-worth.md). See [the build plan](docs/build-plan.md) for the product scope.
+The homepage now includes email sign-in, account creation, password-reset screens, and a responsive collection interface. Search, category filters, sorting, grid/list views, item details, new purchases, and existing-item entry use the authenticated Hono API. The Spending view shows a selected month’s total, category breakdown, and paginated purchase history with linked item details. The collection home groups categories into editorial blocks with the two latest distinct purchased items by actual transaction date. Future Wants saves wishlist entries with optional estimated prices, product links, notes, and priority; these do not affect owned-item counts or spending. Subscriptions supports monthly/yearly renewal tracking, configurable in-app reminders and an opt-in Resend daily digest; expected prices do not create expenses. See [subscription reminders and local email setup](docs/subscription-reminders.md). Item details supports saved value check-ins with verdict, usage, repurchase intent, notes, and history. Private item cover photos are implemented: save an item first, then add, replace, or remove its photo from details using a file or a direct HTTPS image link. The enforced limit is 5,000,000 bytes. Wishlist-to-purchase conversion, refunds, confirmed subscription charges, and suggested check-in dates are next. See [item photos](docs/item-photos.md). See [item value check-ins](docs/item-worth.md). See [the build plan](docs/build-plan.md) for the product scope.
 
 ## Project connections
 
@@ -20,7 +20,7 @@ The homepage now includes email sign-in, account creation, password-reset screen
 - Dashboard: https://supabase.com/dashboard/project/mkthxogkzllahenbrxle
 - Application tables are in the **app** schema, not public. Select that schema in the table editor.
 
-Seven migrations have been applied to the hosted project, including retry receipts for existing-item creation, item value check-ins, private item-photo Storage policies, and direct image imports. Local filenames match its migration history. The repository contains the application scaffold, migration history, and setup instructions.
+Nine migrations have been applied to the hosted project, including retry receipts for existing-item creation, item value check-ins, private item-photo Storage policies, direct image imports, tags and subscription reminders. Local filenames match its migration history. The repository contains the application scaffold, migration history, and setup instructions.
 
 The hosted URL, publishable key, and restricted `inventory_runtime` connection are configured in the ignored `.env.local`. The connection uses `aws-0-us-east-1.pooler.supabase.com:6543` with a generated password kept out of Git. TLS verifies the certificate chain and hostname using the official Supabase root CA bundled in `src/server/db/supabase-ca.ts`. Run `npm run db:check` for a read-only hosted connection check. Supabase CLI authentication/linking is separate from the connected Supabase tool used to apply these migrations.
 
@@ -42,7 +42,7 @@ For a fully local app, back up an existing `.env.local` before replacing it with
 npm run dev
 ```
 
-Open http://localhost:3000. The API lives under `/api`. Auth comes from whichever Supabase URL is configured in `.env.local`; keep its database and Auth project consistent.
+Open http://localhost:3000. With reminder settings present, `npm run dev` also starts the local email worker; keep the terminal running and computer awake for delivery. See [the reminder setup](docs/subscription-reminders.md). The API lives under `/api`. Auth comes from whichever Supabase URL is configured in `.env.local`; keep its database and Auth project consistent.
 
 Webpack is selected for dev/build because Turbopack's CSS subprocess could not bind its internal port in this execution environment. This can be revisited on another machine.
 
@@ -69,14 +69,24 @@ set `PLAYWRIGHT_MODULE_PATH` to its `playwright/index.js`. Set `UI_TEST_BASE_URL
 for another loopback URL, `UI_TEST_BROWSER_CHANNEL` for another installed browser,
 or `UI_TEST_EVIDENCE_DIR` for screenshots (default `/tmp/inventory-collection-search`).
 
-The current verification passed 66 unit/API/database tests, real local Auth/Storage checks, a real HTTPS image download, the collection browser regressions, item-photo/direct-link desktop/mobile checks, the production build, lint, and TypeScript. The schema passed a clean local reset, and hosted photo bucket/RLS/grants and import receipts were verified after migration. Auth retains its existing leaked-password-protection advisory (see [item photo notes](docs/item-photos.md)); remaining performance notices identify unused indexes on the empty database. The production dependency audit is clear; Next ESLint tooling has a pre-existing development-only braces advisory. A scoped esbuild override fixes an advisory in Drizzle Kit's development tooling; introspection was verified with that override.
+Earlier photo verification passed 66 unit/API/database tests, real local Auth/Storage checks, a real HTTPS image download, the collection browser regressions, item-photo/direct-link desktop/mobile checks, the production build, lint, and TypeScript. The schema passed a clean local reset, and hosted photo bucket/RLS/grants and import receipts were verified after migration. Auth retains its existing leaked-password-protection advisory (see [item photo notes](docs/item-photos.md)); remaining performance notices identify unused indexes on the empty database. The production dependency audit is clear; Next ESLint tooling has a pre-existing development-only braces advisory. A scoped esbuild override fixes an advisory in Drizzle Kit's development tooling; introspection was verified with that override.
+
+Subscription reminder verification initially passed 106 unit/API/database tests, a clean migration reset, TypeScript, lint, the production build, existing collection browser regressions and desktop/mobile reminder flows. The October 13 review fixes expand coverage to 108 tests, prevent rewinding into resolved renewals, and paginate worker discovery past skipped accounts. Apply `20261013153443_reminder_account_pagination.sql` to the hosted database before running the updated worker there. Resend accepted a setup test; inbox delivery and public webhooks remain unverified locally. See [reminder verification and rollout notes](docs/subscription-reminders.md).
 
 ## API
 
-Every endpoint except health requires `Authorization: Bearer <Supabase access token>`. Identity comes from Supabase Auth, never the request body. Anonymous Auth accounts are not accepted.
+Account endpoints require `Authorization: Bearer <Supabase access token>`. The internal reminder worker uses a separate server secret, the public provider webhook requires a signed event, and unsubscribe uses a signed link. Identity comes from Supabase Auth, never the request body. Anonymous Auth accounts are not accepted.
 
 | Endpoint | Purpose |
 | --- | --- |
+| GET /api/subscriptions | Renewal tracking, attention count and email availability/preferences. |
+| GET /api/subscriptions/items/:id | Saved tracking for an owned item. |
+| POST /api/subscriptions | Atomically create tracking and an item, or attach tracking to an existing item; requires an idempotency key. |
+| POST /api/subscriptions/:id/edit, /advance, /stop | Revision-checked tracking actions; each requires an idempotency key. |
+| POST /api/reminders/preferences | Opt in/out of email; requires revision and idempotency key. |
+| POST /api/internal/reminders/run | Secret-protected background processing. |
+| POST /api/reminders/webhook | Signed Resend delivery events. |
+| GET, POST /api/reminders/unsubscribe | Signed confirmation and email opt-out. |
 | GET /api/health | Process health; does not claim database readiness. |
 | POST /api/profile/bootstrap | Create a profile and seven starter categories once. Body: `{}` or currency/timezone preferences. |
 | GET /api/categories | Active categories belonging to the account. |

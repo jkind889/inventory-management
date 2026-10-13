@@ -126,6 +126,8 @@ await context.route("**/api/**", async (route) => {
   const request = route.request();
   const url = new URL(request.url());
   const path = url.pathname;
+  if (url.pathname === "/api/subscriptions") return route.fulfill({ json: { data: [], today: "2026-10-11", attentionCount: 0, preferences: { enabled: false, revision: 0, blocked: false, emailAvailable: false, emailReason: "Email testing is not enabled for this fixture." } } });
+  if (url.pathname.startsWith("/api/subscriptions/items/")) return route.fulfill({ json: { subscription: null } });
   if (path === "/api/profile/bootstrap")
     return route.fulfill({ json: { profile } });
   if (path === "/api/tags") return route.fulfill({ json: { data: [], total: 0, limit: 20, offset: 0 } });

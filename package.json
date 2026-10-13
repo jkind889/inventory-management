@@ -7,7 +7,9 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "dev": "next dev --webpack",
+    "dev": "node scripts/dev.mjs",
+    "reminders:run": "node scripts/reminders-worker.mjs",
+    "reminders:watch": "node scripts/reminders-worker.mjs --watch",
     "build": "next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit",
