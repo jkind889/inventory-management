@@ -140,6 +140,8 @@ Each application query runs in a transaction with transaction-local verified ide
 
 ## Sign-in configuration
 
+Set `APP_URL` in `.env.local` to the canonical app origin (currently `http://localhost:3000`). Signup confirmation, password recovery, reminder details and unsubscribe links all use this setting. Use the public HTTPS origin when deploying and restart the server after changing it. The homepage reads it at runtime and passes only the validated origin to the browser; no second public URL variable is needed. Keep API requests and in-app navigation relative to the current origin. `APP_URL` must not contain credentials, a subpath, query parameters or a fragment.
+
 Use the Supabase publishable key in the browser; the restricted database connection stays server-only. Sessions persist in the browser and API requests carry the access token; Hono verifies it before running account-scoped queries. Signing out clears the collection UI.
 
 Set Supabase Auth's Site URL to the deployed app origin and allow its callback URLs, including `/?mode=recovery`; allow `http://localhost:3000` and its recovery URL for local development. Account creation can require email confirmation depending on the project configuration. Confirmation and password recovery depend on Supabase email delivery; production email delivery has not been verified in this UI pass. Use an appropriate SMTP provider before relying on production email flows.

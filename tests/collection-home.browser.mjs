@@ -97,6 +97,7 @@ let failDetailId = null;
 let holdDetailId = null;
 let heldDetailRoute = null;
 let wantsFailure = false;
+let spendingFailure = false;
 const errors = [];
 const browser = await chromium.launch({
   headless: true,
@@ -238,6 +239,8 @@ await context.route("**/api/**", async (route) => {
       },
     });
   }
+  if (path === "/api/spending/summary" && spendingFailure)
+    return route.fulfill({ status: 500, json: { error: "Fixture spending failure" } });
   if (path === "/api/spending/summary")
     return route.fulfill({
       json: {
@@ -404,10 +407,20 @@ try {
   await nav.getByRole("button", { name: "Spending", exact: true }).click();
   await page.getByText("$523.00", { exact: true }).waitFor();
   await page.screenshot({ path: `${evidence}/spending-desktop.png` });
+  spendingFailure = true;
   await page
     .getByRole("button", { name: "Previous month", exact: true })
     .click();
+  await page.getByRole("heading", { name: "We couldn’t load your spending." }).waitFor();
+  const failedMonth = await page.getByLabel("Spending month").inputValue();
+  spendingFailure = false;
+  await page.getByRole("button", { name: "Previous month", exact: true }).click();
   await page.getByText("$523.00", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Next month", exact: true }).click();
+  assert.equal(await page.getByLabel("Spending month").inputValue(), failedMonth);
+  await page.getByText("$523.00", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("heading", { name: "We couldn’t load your spending." }).count(), 0);
+  await page.screenshot({ path: `${evidence}/spending-recovered.png` });
   await nav.getByRole("button", { name: "Future Wants", exact: true }).click();
   await page
     .getByRole("heading", { name: "A little room for possibility." })
@@ -566,7 +579,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    `PASS subscription category selectors, review save/history/lost-response retry, mobile review form, wishlist exclusion, workbench selection and inline details, sidebar and mobile filtering, search, category-aware add, Spending, saved wants/reload, retry key reuse, optional-count failure, 1536/900/390px layout; screenshots: ${evidence}`,
+    `PASS subscription category selectors, review save/history/lost-response retry, mobile review form, wishlist exclusion, workbench selection and inline details, sidebar and mobile filtering, search, category-aware add, Spending failure/navigation/recovery, saved wants/reload, retry key reuse, optional-count failure, 1536/900/390px layout; screenshots: ${evidence}`,
   );
 } catch (error) {
   await page.screenshot({ path: `${evidence}/failure.png`, fullPage: true });

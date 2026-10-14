@@ -5,7 +5,7 @@ import { Brand } from "@/components/icon";
 import { getBrowserClient } from "@/lib/supabase-browser";
 import { AuthScreen } from "./auth-screen";
 import { CollectionScreen } from "@/features/collection/collection-screen";
-export function AppEntry() {
+export function AppEntry({ appUrl }: { appUrl: string }) {
   const [state, setState] = useState<{
     ready: boolean;
     session: Session | null;
@@ -66,6 +66,7 @@ export function AppEntry() {
   if (!state.session || state.recovery)
     return (
       <AuthScreen
+        appUrl={appUrl}
         key={state.recovery ? "recovery" : "auth"}
         recovery={state.recovery}
         initialError={state.error}

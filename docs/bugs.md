@@ -7,7 +7,7 @@ The audit reviewed application code, database migrations, and dependencies. Type
 ## Review checklist
 
 - [x] BUG-001: Collection search can stay in a loading state (fixed; browser regression verified).
-- [ ] BUG-002: Spending retains an old error after a successful reload.
+- [x] BUG-002: Spending retains an old error after a successful reload (fixed).
 - [x] BUG-003: Retrying an existing-item submission can create duplicates (fixed; verified locally and hosted migration applied).
 - [ ] DEP-001: Review the development-only dependency advisory.
 - [ ] PREP-001: Decide on component/style organization before restyling.
@@ -47,7 +47,9 @@ Acceptance: Rapid edit-and-undo returns to the original results without a stuck 
 
 ## BUG-002 — Spending retains an old error
 
-Priority: P2 · Status: Open
+Priority: P2 · Status: Fixed
+
+**Resolution — October 14, 2026:** Successful Spending requests now clear the previous failure together with saving the loaded summary/history. Aborted requests still cannot publish results or clear current errors. The collection-home browser regression passes against a local production build and covers a failed month, a successful different month, and returning to the failed month with a successful response. The reproduction below describes the original behavior.
 
 Source: [Request/error state](../../src/features/spending/spending-screen.tsx#L30) and [success handler](../../src/features/spending/spending-screen.tsx#L60).
 

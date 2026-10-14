@@ -1,4 +1,5 @@
 import "server-only";
+import { getAppUrl } from "../app-url";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
@@ -112,7 +113,7 @@ export function createReminderEmailService(db: Database, send: EmailSender = sen
       let payload = digest.payload;
       let entries = digest.entries;
       if (!digest.firstAttemptAt) {
-        const origin = new URL(process.env.APP_URL!).origin;
+        const origin = getAppUrl();
         const token = unsubscribeToken(userId, ctx.prefs!.unsubscribeNonce, process.env.REMINDER_SIGNING_SECRET!);
         payload = renderDigest(matching.map(row => ({ ...row.subscription, name: row.name })), origin,
           `${origin}/api/reminders/unsubscribe?token=${encodeURIComponent(token)}`, process.env.REMINDER_FROM || "Inventory Reminders <onboarding@resend.dev>", digest.recipient);

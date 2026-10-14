@@ -58,8 +58,10 @@ export function SpendingScreen({
       }),
     ])
       .then(([summary, history]) => {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted) {
           setResult({ key: requestKey, summary, history });
+          setFailure(null);
+        }
       })
       .catch((err) => {
         if (!controller.signal.aborted)

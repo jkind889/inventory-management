@@ -1,4 +1,5 @@
 import "server-only";
+import { getAppUrl } from "../app-url";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, gte, isNull, sql } from "drizzle-orm";
 import { HTTPException } from "hono/http-exception";
@@ -20,6 +21,7 @@ export function emailAvailability(identity?: { email: string; verified: boolean 
   if (!identity?.verified) return "Verify your account email before enabling reminder emails.";
   if (!(process.env.RESEND_API_KEY || process.env.RESEND_API)) return "Reminder email is not configured yet.";
   if (!process.env.REMINDER_SIGNING_SECRET || !process.env.APP_URL) return "Reminder email setup is incomplete.";
+  try { getAppUrl(); } catch { return "Reminder email setup is incomplete."; }
   const sender = process.env.REMINDER_FROM || "onboarding@resend.dev";
   if (sender.toLowerCase().includes("@resend.dev") && identity.email.toLowerCase() !== process.env.RESEND_TEST_RECIPIENT?.toLowerCase()) {
     return "Email testing is available only for the Resend account email. In-app reminders are available here.";
