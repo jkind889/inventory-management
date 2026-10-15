@@ -44,7 +44,7 @@ export function WorkbenchSidebar({
 export function WorkbenchInspector({ selected, categories, profile, close, wants = false, emptyContent }: {
   selected: string | null;
   categories: Category[];
-  profile: Profile;
+  profile: Profile | null;
   close: () => void;
   wants?: boolean;
   emptyContent?: ReactNode;
@@ -56,7 +56,7 @@ export function WorkbenchInspector({ selected, categories, profile, close, wants
         {selected && <button className="icon-button" aria-label="Close item details" onClick={close}><Icon name="close" size={16} /></button>}
       </header>
       <div className="inspector-scroll" aria-live="polite">
-        {selected ? <ItemDetails key={selected} id={selected} categories={categories} profile={profile} /> : emptyContent ?? (
+        {selected && profile ? <ItemDetails key={selected} id={selected} categories={categories} profile={profile} /> : emptyContent ?? (
           <div className="inspector-empty">
             <Icon name="box" size={32} />
             <h1>{wants ? "Select a future want" : "Select an item"}</h1>

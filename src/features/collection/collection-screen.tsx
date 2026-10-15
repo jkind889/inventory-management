@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
 import type { User } from "@supabase/supabase-js";
 import { Icon } from "@/components/icon";
 import { api, errorMessage } from "@/lib/api";
@@ -20,6 +21,7 @@ import {
 } from "@/shared/submission";
 import {
   parsePrice,
+  starterCategories,
   type Category,
   type CollectionResponse,
   type Profile,
@@ -225,13 +227,27 @@ function AddItem({
     </Dialog>
   );
 }
-export function CollectionScreen({ user }: { user: User }) {
+// Display-only starter collections. Guest actions never submit these IDs.
+const guestCategories: Category[] = starterCategories.map((name) => ({
+  id: `guest-${name.toLowerCase()}`,
+  name,
+  userId: "",
+  archivedAt: null,
+  createdAt: "1970-01-01T00:00:00.000Z",
+  updatedAt: "1970-01-01T00:00:00.000Z",
+}));
+
+export function CollectionScreen({ user, onAuthenticate, children }: {
+  user: User | null;
+  onAuthenticate: (mode: "signin" | "signup") => void;
+  children?: ReactNode;
+}) {
   const [screen, setScreen] = useState<"collection" | "spending" | "wants">(
     "collection",
   );
   const [addCategory, setAddCategory] = useState("");
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [categories, setCategories] = useState<Category[]>(user ? [] : guestCategories);
   const [setupError, setSetupError] = useState("");
   const [setupRetry, setSetupRetry] = useState(0);
   const [query, setQuery] = useState("");
@@ -273,10 +289,11 @@ export function CollectionScreen({ user }: { user: User }) {
     refresh,
   ]);
   const requestPending = completedRequest?.key !== requestKey;
-  const loading = query !== search || requestPending;
+  const loading = !!user && (query !== search || requestPending);
   const result = completedRequest?.result ?? null;
   const error = loading ? "" : (completedRequest?.error ?? "");
   useEffect(() => {
+    if (!user) return;
     const controller = new AbortController();
     (async () => {
       const preferred =
@@ -374,25 +391,31 @@ export function CollectionScreen({ user }: { user: User }) {
       <header className="space-header">
         <button
           className="space-brand"
+          aria-label="Marscorp inventory home"
           onClick={() => {
             setScreen("collection");
             setSelected(null);
           }}
         >
-          marscorp
+          <Image src="/marscorp-logo.png" alt="Marscorp" width={1877} height={838} sizes="(max-width: 700px) 90px, 104px" className="space-logo" preload />
         </button>
-        <div className="space-account">
-          <span className="space-avatar" title={user.email}>
-            {(user.email?.[0] ?? "Y").toUpperCase()}
-          </span>
-          <button
-            className="text-button signout"
-            onClick={signOut}
-            disabled={signingOut}
-          >
-            {signingOut ? "Signing out…" : "Sign out"}
-          </button>
-        </div>
+        <nav className="space-account" aria-label="Account navigation">
+          {user ? <>
+            <span className="space-avatar" title={user.email}>
+              {(user.email?.[0] ?? "Y").toUpperCase()}
+            </span>
+            <button
+              className="text-button signout"
+              onClick={signOut}
+              disabled={signingOut}
+            >
+              {signingOut ? "Signing out…" : "Sign out"}
+            </button>
+          </> : <>
+            <button className="text-button" onClick={() => onAuthenticate("signin")}>Sign in</button>
+            <button className="button primary" onClick={() => onAuthenticate("signup")}>Create account</button>
+          </>}
+        </nav>
       </header>
       <nav className="space-tabs" aria-label="Main navigation">
         <button
@@ -407,6 +430,7 @@ export function CollectionScreen({ user }: { user: User }) {
         <button
           aria-current={screen === "spending" ? "page" : undefined}
           onClick={() => {
+            if (!user) { onAuthenticate("signin"); return; }
             setScreen("spending");
             setSelected(null);
           }}
@@ -416,6 +440,7 @@ export function CollectionScreen({ user }: { user: User }) {
         <button
           aria-current={screen === "wants" ? "page" : undefined}
           onClick={() => {
+            if (!user) { onAuthenticate("signin"); return; }
             setScreen("wants");
             setSelected(null);
           }}
@@ -450,11 +475,11 @@ export function CollectionScreen({ user }: { user: User }) {
               Try again
             </button>
           </div>
-        ) : !profile ? (
+        ) : !profile && user ? (
           <p role="status">Opening your space…</p>
-        ) : screen === "spending" ? (
+        ) : screen === "spending" && profile ? (
           <SpendingScreen profile={profile} openItem={setSelected} />
-        ) : screen === "wants" ? (
+        ) : screen === "wants" && profile ? (
           <WantsScreen
             profile={profile}
             categories={categories}
@@ -491,6 +516,7 @@ export function CollectionScreen({ user }: { user: User }) {
             }}
             retry={() => setRefresh((v) => v + 1)}
             addItem={() => {
+              if (!user) { onAuthenticate("signup"); return; }
               setAddCategory(category);
               setAdd(true);
             }}
@@ -529,6 +555,7 @@ export function CollectionScreen({ user }: { user: User }) {
         </Dialog>
       )}
       {linkedItem && profile && <Dialog title="Subscription details" close={() => { setLinkedItem(null); const url = new URL(window.location.href); url.searchParams.delete("item"); window.history.replaceState(null, "", url); }} drawer><ItemDetails key={linkedItem} id={linkedItem} profile={profile} categories={categories} /></Dialog>}
+      {children}
     </div>
   );
 }

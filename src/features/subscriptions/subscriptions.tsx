@@ -8,26 +8,28 @@ import { isAttention, reminderDays, renewalOn, renewalState, renewalStateLabels,
 
 export const SUBSCRIPTIONS_CHANGED = "inventory:subscriptions-changed";
 function changed() { window.dispatchEvent(new Event(SUBSCRIPTIONS_CHANGED)); }
-export function useSubscriptions() {
+export function useSubscriptions(enabled = true) {
   const [data, setData] = useState<SubscriptionsResponse | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
+    if (!enabled) return;
     const controller = new AbortController();
     api<SubscriptionsResponse>("/subscriptions", { signal: controller.signal })
       .then(value => { if (!controller.signal.aborted) { setData(value); setError(""); } })
       .catch(reason => { if (!controller.signal.aborted) setError(errorMessage(reason)); });
     return () => controller.abort();
-  }, [revision]);
+  }, [revision, enabled]);
   useEffect(() => {
+    if (!enabled) return;
     const focus = () => { if (document.visibilityState === "visible") refresh(); };
     window.addEventListener(SUBSCRIPTIONS_CHANGED, refresh);
     window.addEventListener("focus", focus);
     document.addEventListener("visibilitychange", focus);
     const timer = window.setInterval(focus, 60000);
     return () => { window.removeEventListener(SUBSCRIPTIONS_CHANGED, refresh); window.removeEventListener("focus", focus); document.removeEventListener("visibilitychange", focus); window.clearInterval(timer); };
-  }, [refresh]);
+  }, [refresh, enabled]);
   return { data, error, refresh };
 }
 function useSubmission() {

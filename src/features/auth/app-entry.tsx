@@ -1,30 +1,36 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Brand } from "@/components/icon";
 import { getBrowserClient } from "@/lib/supabase-browser";
-import { AuthScreen } from "./auth-screen";
+import { AuthDialog, type AuthMode } from "./auth-dialog";
 import { CollectionScreen } from "@/features/collection/collection-screen";
 export function AppEntry({ appUrl }: { appUrl: string }) {
   const [state, setState] = useState<{
-    ready: boolean;
     session: Session | null;
     recovery: boolean;
     error?: string;
-  }>({ ready: false, session: null, recovery: false });
+  }>({ session: null, recovery: false });
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  const linkErrorRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     let active = true;
     const hash = new URLSearchParams(window.location.hash.slice(1));
-    const linkError = hash.has("error")
-      ? "This sign-in link is invalid or has expired. Please request a new link."
-      : undefined;
-    if (linkError) window.history.replaceState({}, "", "/");
+    // Preserve the message when development Strict Mode reruns this effect
+    // after the sensitive URL fragment has already been cleared.
+    if (hash.has("error")) {
+      linkErrorRef.current =
+        "This sign-in link is invalid or has expired. Please request a new link.";
+      window.history.replaceState({}, "", "/");
+    }
     try {
       const { data } = getBrowserClient().auth.onAuthStateChange(
         (event, session) => {
-          if (active)
+          if (active) {
+            const linkError = linkErrorRef.current;
+            linkErrorRef.current = undefined;
+            if (session) setAuthMode(null);
+            else if (linkError) setAuthMode("signin");
             setState((previous) => ({
-              ready: true,
               session,
               error: linkError,
               recovery:
@@ -34,6 +40,7 @@ export function AppEntry({ appUrl }: { appUrl: string }) {
                   new URLSearchParams(window.location.search).get("mode") ===
                     "recovery"),
             }));
+          }
         },
       );
       return () => {
@@ -44,7 +51,6 @@ export function AppEntry({ appUrl }: { appUrl: string }) {
       queueMicrotask(() => {
         if (active)
           setState({
-            ready: true,
             session: null,
             recovery: false,
             error:
@@ -56,24 +62,27 @@ export function AppEntry({ appUrl }: { appUrl: string }) {
       };
     }
   }, []);
-  if (!state.ready)
-    return (
-      <main className="loading-page">
-        <Brand />
-        <p role="status">Opening your space…</p>
-      </main>
-    );
-  if (!state.session || state.recovery)
-    return (
-      <AuthScreen
-        appUrl={appUrl}
-        key={state.recovery ? "recovery" : "auth"}
-        recovery={state.recovery}
-        initialError={state.error}
-        onRecovered={() => setState((s) => ({ ...s, recovery: false }))}
-      />
-    );
+  const user = state.recovery ? null : (state.session?.user ?? null);
   return (
-    <CollectionScreen key={state.session.user.id} user={state.session.user} />
+    <CollectionScreen
+      key={user?.id ?? "guest"}
+      user={user}
+      onAuthenticate={setAuthMode}
+    >
+      {(state.recovery || (!state.session && authMode)) && (
+        <AuthDialog
+          appUrl={appUrl}
+          key={state.recovery ? "recovery" : authMode}
+          initialMode={state.recovery ? "recovery" : (authMode ?? "signin")}
+          initialError={state.error}
+          close={() => {
+            setAuthMode(null);
+            if (state.recovery) window.history.replaceState({}, "", "/");
+            setState((s) => ({ ...s, recovery: false, error: undefined }));
+          }}
+          onRecovered={() => setState((s) => ({ ...s, recovery: false }))}
+        />
+      )}
+    </CollectionScreen>
   );
 }
