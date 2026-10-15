@@ -1,6 +1,6 @@
 # Subscription reminders and item photos
 
-Scope assessment: October 8, 2026. Item cover photos are implemented; subscription reminders remain a proposal deferred until their external dependencies are ready. Photos belong to items in this inventory app's collections.
+Scope assessment: October 8, 2026. Item cover photos are implemented; subscription reminders remain unimplemented. **October 11 update:** the first reminder release is now being scoped for in-app plus email; see the current [subscription reminder plan](subscription-reminders.md). The in-app-only scope below is the earlier proposal. Photos belong to items in this inventory app's collections.
 
 Both features fit the existing architecture. Build them as separate releases: subscription tracking with in-app renewal reminders, and private item cover photos. Full charge confirmation and photo galleries can follow without making the first releases depend on them.
 

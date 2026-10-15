@@ -1,3 +1,4 @@
+import type { TaggedItem } from "./tags";
 import type { PhotoCover, PhotoUpload } from "./photos";
 import type {
   categories,
@@ -13,7 +14,7 @@ export function isCollectionCategory(category: Pick<Category, "name">) {
   return category.name.trim().toLowerCase() !== "groceries";
 }
 export type Profile = typeof profiles.$inferSelect;
-export type CollectionItem = typeof items.$inferSelect & {
+export type CollectionItem = TaggedItem<typeof items.$inferSelect> & {
   recordedCostMinor: string | null;
 };
 export type CollectionResponse = {
@@ -30,13 +31,13 @@ export type CollectionOverview = {
   }[];
 };
 export type WantsResponse = {
-  data: (typeof items.$inferSelect)[];
+  data: TaggedItem<typeof items.$inferSelect>[];
   total: number;
   limit: number;
   offset: number;
 };
 export type ItemDetail = {
-  item: typeof items.$inferSelect;
+  item: TaggedItem<typeof items.$inferSelect>;
   transactions: (typeof transactions.$inferSelect)[];
   reviews: ItemReview[];
   cover: PhotoCover | null;

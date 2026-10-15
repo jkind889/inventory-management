@@ -5,7 +5,9 @@ import { Icon } from "@/components/icon";
 import { api, errorMessage } from "@/lib/api";
 import { formatDate, formatMoney, type Category, type ItemDetail, type Profile } from "@/shared/collection";
 import { ItemPhoto } from "./item-photo";
+import { ItemTags } from "@/features/tags/item-tags";
 import { ItemWorth } from "./item-worth";
+import { ItemSubscription } from "@/features/subscriptions/subscriptions";
 
 export function ItemDetails({ id, categories, profile }: { id: string; categories: Category[]; profile: Profile }) {
   const [response, setResponse] = useState<{ detail?: ItemDetail; error?: string } | null>(null);
@@ -25,6 +27,7 @@ export function ItemDetails({ id, categories, profile }: { id: string; categorie
   return <article className="item-inspector">
     <h1>{item.name}</h1>
     <p className="inspector-meta">{category}<span aria-hidden="true"> / </span>{item.state === "wishlist" ? "Future want" : "Owned"}</p>
+    <ItemTags key={item.id} itemId={item.id} initial={item.tags ?? []} />
     <ItemPhoto itemId={item.id} name={item.name} category={category} cover={response.detail.cover ?? null} pending={response.detail.pendingPhoto ?? null} refresh={refreshPhoto} />
     <dl className="inspector-fields">
       <div><dt>Collection</dt><dd>{category}</dd></div>
@@ -36,6 +39,7 @@ export function ItemDetails({ id, categories, profile }: { id: string; categorie
       {item.description && <div><dt>Notes</dt><dd className="inspector-note">{item.description}</dd></div>}
     </dl>
     {item.productUrl && <a className="text-button" href={item.productUrl} target="_blank" rel="noopener noreferrer">View product <Icon name="arrow" size={16} /></a>}
+    {item.state === "owned" && <ItemSubscription itemId={item.id} profile={profile} categories={categories} />}
     {item.state !== "wishlist" && <ItemWorth itemId={item.id} reviews={reviews} timezone={profile.timezone} />}
     <section className="inspector-purchases">
       <h2>Purchase record</h2>

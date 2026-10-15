@@ -7,10 +7,12 @@ import { currencies } from "@/shared/contracts";
 
 type Mode = "signin" | "signup" | "forgot" | "recovery";
 export function AuthScreen({
+  appUrl,
   recovery = false,
   initialError,
   onRecovered,
 }: {
+  appUrl: string;
   recovery?: boolean;
   initialError?: string;
   onRecovered: () => void;
@@ -49,7 +51,7 @@ export function AuthScreen({
           email: email.trim(),
           password,
           options: {
-            emailRedirectTo: window.location.origin,
+            emailRedirectTo: appUrl,
             data: {
               preferred_currency: currency,
               preferred_timezone:
@@ -67,7 +69,7 @@ export function AuthScreen({
       } else if (mode === "forgot") {
         const { error } = await client.auth.resetPasswordForEmail(
           email.trim(),
-          { redirectTo: `${window.location.origin}/?mode=recovery` },
+          { redirectTo: `${appUrl}/?mode=recovery` },
         );
         if (error) throw error;
         setNotice(

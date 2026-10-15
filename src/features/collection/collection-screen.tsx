@@ -5,11 +5,14 @@ import type { User } from "@supabase/supabase-js";
 import { Icon } from "@/components/icon";
 import { api, errorMessage } from "@/lib/api";
 import { getBrowserClient } from "@/lib/supabase-browser";
+import { TagPicker } from "@/features/tags/tag-controls";
+import { TAGS_CHANGED, type Tag } from "@/shared/tags";
 import { Dialog } from "@/components/dialog";
 import { CollectionWorkbench } from "./collection-workbench";
 import { ItemDetails } from "./item-details";
 import { WantsScreen } from "@/features/wants/wants-screen";
 import { SpendingScreen } from "@/features/spending/spending-screen";
+import { SUBSCRIPTIONS_CHANGED } from "@/features/subscriptions/subscriptions";
 import { currencies } from "@/shared/contracts";
 import {
   getSubmissionAttempt,
@@ -35,6 +38,8 @@ function AddItem({
   categoryId: string;
 }) {
   const [purchase, setPurchase] = useState(true);
+  const [tags, setTags] = useState<string[]>([]);
+  const [pendingTag, setPendingTag] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const attempt = useRef<SubmissionAttempt | null>(null);
@@ -46,12 +51,13 @@ function AddItem({
   }).format(new Date());
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || pendingTag) return;
     const form = new FormData(event.currentTarget);
     const name = String(form.get("name")).trim();
     const common = {
       name,
       categoryId: String(form.get("category")),
+      ...(tags.length ? { tags } : {}),
     };
     const note = String(form.get("note") || "").trim() || null;
     const amountMinor = parsePrice(String(form.get("price") || ""));
@@ -195,6 +201,7 @@ function AddItem({
             />
           </label>
         </fieldset>
+        <TagPicker value={tags} onChange={setTags} pendingChanged={setPendingTag} disabled={busy} />
         {error && (
           <p className="form-message error" role="alert">
             {error}
@@ -209,7 +216,7 @@ function AddItem({
           >
             Cancel
           </button>
-          <button className="button primary" disabled={busy}>
+          <button className="button primary" disabled={busy || pendingTag}>
             {busy ? "Adding…" : "Add item"}
             <Icon name="plus" size={18} />
           </button>
@@ -230,6 +237,7 @@ export function CollectionScreen({ user }: { user: User }) {
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
+  const [tagFilters, setTagFilters] = useState<Tag[]>([]);
   const [sort, setSort] = useState("newest");
   const [offset, setOffset] = useState(0);
   const [completedRequest, setCompletedRequest] = useState<{
@@ -238,10 +246,16 @@ export function CollectionScreen({ user }: { user: User }) {
     error: string;
   } | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [linkedItem, setLinkedItem] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const id = new URLSearchParams(window.location.search).get("item");
+    return id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) ? id : null;
+  });
   useEffect(() => {
     const refreshPhotos = () => setRefresh(v => v + 1);
     window.addEventListener('inventory:photos-changed', refreshPhotos);
-    return () => window.removeEventListener('inventory:photos-changed', refreshPhotos);
+    window.addEventListener(SUBSCRIPTIONS_CHANGED, refreshPhotos);
+    return () => { window.removeEventListener('inventory:photos-changed', refreshPhotos); window.removeEventListener(SUBSCRIPTIONS_CHANGED, refreshPhotos); };
   }, []);
   const [add, setAdd] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -255,6 +269,7 @@ export function CollectionScreen({ user }: { user: User }) {
     sort,
     offset,
     category,
+    tagFilters,
     refresh,
   ]);
   const requestPending = completedRequest?.key !== requestKey;
@@ -308,11 +323,14 @@ export function CollectionScreen({ user }: { user: User }) {
       offset: String(offset),
     });
     if (category) params.set("categoryId", category);
+    tagFilters.forEach(tag => params.append("tagId", tag.id));
     api<CollectionResponse>(`/collection?${params}`, {
       signal: controller.signal,
     })
       .then((data) => {
         if (!controller.signal.aborted) {
+          // Renewal links may select an item outside the current results page.
+          // Filter and pagination handlers clear selection when their inputs change.
           setCompletedRequest({
             key: requestKey,
             result: data,
@@ -330,7 +348,12 @@ export function CollectionScreen({ user }: { user: User }) {
         }
       });
     return () => controller.abort();
-  }, [profile, search, sort, offset, category, requestKey, screen]);
+  }, [profile, search, sort, offset, category, tagFilters, requestKey, screen]);
+  useEffect(() => {
+    const changed = () => { setRefresh(value => value + 1); setOffset(0); };
+    window.addEventListener(TAGS_CHANGED, changed);
+    return () => window.removeEventListener(TAGS_CHANGED, changed);
+  }, []);
   function filter(id: string) {
     setCategory(id);
     setOffset(0);
@@ -445,6 +468,8 @@ export function CollectionScreen({ user }: { user: User }) {
             error={error}
             query={query}
             category={category}
+            tagFilters={tagFilters}
+            changeTags={(tags) => { setTagFilters(tags); setOffset(0); setSelected(null); }}
             sort={sort}
             offset={offset}
             selected={selected}
@@ -483,6 +508,8 @@ export function CollectionScreen({ user }: { user: User }) {
             setQuery("");
             setSearch("");
             setCategory("");
+            setTagFilters([]);
+            window.dispatchEvent(new CustomEvent(TAGS_CHANGED));
             setSort("newest");
             setOffset(0);
             setRefresh((v) => v + 1);
@@ -501,6 +528,7 @@ export function CollectionScreen({ user }: { user: User }) {
           />
         </Dialog>
       )}
+      {linkedItem && profile && <Dialog title="Subscription details" close={() => { setLinkedItem(null); const url = new URL(window.location.href); url.searchParams.delete("item"); window.history.replaceState(null, "", url); }} drawer><ItemDetails key={linkedItem} id={linkedItem} profile={profile} categories={categories} /></Dialog>}
     </div>
   );
 }

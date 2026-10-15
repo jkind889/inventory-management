@@ -1960,6 +1960,51 @@ textarea {
 .worth-history > .muted { margin-bottom: 14px; }
 .worth-saved { color: #94dbc0; font-size: 12px; margin-bottom: 14px; }
 .tone-subscriptions { background: #e6e5f1; color: #5b5777; }
+.subscription-controls { border-top: 1px solid var(--border); padding-top: 22px; margin-top: 24px; max-width: 680px; }
+.subscription-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.subscription-title h1 { font-size: clamp(24px, 3vw, 34px); margin: 4px 0; }
+.subscription-title h2, .subscription-controls > h2 { font: 600 14px/1.5 var(--mono); margin-bottom: 12px; }
+.subscription-controls .muted, .renewals-panel > .muted, .subscription-form .muted { font-size: 13px; line-height: 1.6; margin: 12px 0; }
+.subscription-form { margin: 20px 0; padding: 20px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.subscription-form fieldset { border: 0; padding: 0; min-width: 0; }
+.subscription-form legend { font-weight: 600; margin-bottom: 18px; }
+.subscription-form label, .subscription-confirm label { display: block; font-size: 12px; margin-bottom: 14px; }
+.subscription-form input:not([type=checkbox]), .subscription-form select, .subscription-confirm input { display: block; width: 100%; min-height: 40px; padding: 9px 10px; margin-top: 6px; font: inherit; background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 4px; }
+.subscription-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.subscription-form .subscription-check { display: flex; align-items: flex-start; gap: 9px; line-height: 1.5; }
+.subscription-check input { flex: 0 0 16px; width: 16px; height: 16px; min-height: 16px; margin: 2px 0 0; padding: 0; accent-color: var(--accent); }
+.subscription-preview { padding: 12px; background: var(--pale); border-radius: 4px; font-size: 13px; }
+.subscription-confirm { padding: 16px; background: var(--pale); border-radius: 6px; margin: 14px 0; }
+.subscription-confirm p { font-size: 13px; line-height: 1.6; margin-bottom: 16px; }
+.subscription-controls .worth-actions, .renewals-panel .worth-actions { flex-wrap: wrap; }
+.renewals-panel { padding: 20px 28px 32px; max-width: 960px; }
+.renewals-panel .eyebrow { font: 11px var(--mono); letter-spacing: .1em; color: var(--muted); }
+.reminder-email-settings { padding: 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; background: var(--pale); border-radius: 6px; margin: 20px 0; }
+.reminder-email-settings h2 { font-size: 13px; font-weight: 600; }
+.reminder-email-settings p { font-size: 12px; line-height: 1.6; margin: 5px 0 0; }
+.reminder-email-settings button { flex-shrink: 0; }
+.renewal-row { display: flex; justify-content: space-between; align-items: center; text-align: left; width: 100%; gap: 18px; padding: 16px 0; background: none; border: 0; border-bottom: 1px solid var(--border); color: var(--ink); cursor: pointer; }
+.renewal-row > span { min-width: 0; }
+.renewal-row strong { font-size: 14px; overflow-wrap: anywhere; }
+.renewal-row small:not(.renewal-badge) { display: block; font-size: 12px; margin-top: 6px; color: var(--muted); }
+.renewal-row > span:last-child { text-align: right; flex-shrink: 0; }
+.renewal-row time { font-size: 13px; }
+.renewal-row .renewal-badge { display: table; margin: 6px 0 0 auto; }
+.renewal-badge { display: inline-block; font: 11px/1.4 var(--mono); background: #e5e7dc; color: #4b543c; padding: 4px 8px; border-radius: 4px; }
+.renewal-badge.state-attention, .renewal-badge.state-today { background: #f1e8cc; color: #786027; }
+.renewal-badge.state-overdue { background: #f2ded7; color: #91543e; }
+.renewal-badge.state-stopped, .renewal-badge.state-off { background: #e5e4e0; color: #686a65; }
+.renewal-home-alert { background: var(--pale); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+.renewal-home-alert h2 { font-size: 18px; }
+.renewals-empty { padding: 24px 0; font-size: 13px; }
+@media (max-width: 700px) {
+  .renewals-panel { padding: 20px 16px; }
+  .reminder-email-settings { align-items: flex-start; flex-direction: column; }
+  .subscription-form { padding: 14px; }
+  .subscription-form-grid { grid-template-columns: 1fr; gap: 0; }
+  .renewal-row { gap: 10px; }
+  .renewal-row > span:last-child { max-width: 45%; }
+}
 .inspector-empty { padding: 55px 36px; color: #777f8b; }
 .inspector-empty h1 { margin: 20px 0 10px; color: #c2c6ce; font-size: 23px; font-weight: 500; }
 .inspector-empty p { font-size: 13px; line-height: 1.7; max-width: 360px; }
@@ -1969,7 +2014,7 @@ textarea {
 .results-heading { display: flex; align-items: center; gap: 16px; padding: 10px 18px 0; }
 .results-heading h2 { color: #c3c8d2; font: 600 12px var(--mono); text-transform: uppercase; }
 .results-heading h2 span { font-weight: 400; color: #939aa7; text-transform: none; }
-.results-heading > .button { margin-left: auto; }
+.results-heading > .button, .results-heading > .worth-actions { margin-left: auto; }
 .workbench-shell .button { min-height: 34px; padding: 7px 13px; border-radius: 3px; font-size: 12px; }
 .workbench-shell .secondary { background: #2d2f34; border-color: #4e515a; }
 .workbench-shell .primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -2110,3 +2155,37 @@ textarea {
 .photo-link-form input { width: 100%; min-width: 0; color: var(--ink); background: var(--surface); border-color: var(--border); }
 .photo-link-form input::placeholder { color: var(--muted); }
 .photo-link-form .muted { margin: 0; }
+
+/* Tags share the workbench's compact neutral controls. */
+.tag-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; }
+.tag-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 3px 6px; border: 1px solid #55565b; border-radius: 3px; font: 11px/1.4 Menlo, Monaco, monospace; overflow-wrap: anywhere; white-space: normal; background: #2c2d32; color: #d8dbe2; }
+.tag-chip button { padding: 0 3px; flex-shrink: 0; line-height: 1; color: inherit; background: none; border: 0; }
+.tag-picker { border: 0; padding: 0; margin: 16px 0; min-width: 0; }
+.item-form fieldset.tag-picker { display: block; }
+.tag-picker legend { margin-bottom: 10px; font-size: 13px; }
+.tag-picker .tag-chips { margin-bottom: 10px; }
+.tag-picker .field { margin-bottom: 5px; }
+.tag-picker .field-help { margin: 5px 0; }
+.tag-suggestions, .tag-page-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 12px; }
+.tag-suggestions > button, .tag-page-actions button { padding: 5px 8px; border: 1px solid #55565b; border-radius: 3px; background: #2c2d32; color: #d8dbe2; }
+.item-tags { margin: 22px 0; }
+.tag-section-heading, .tag-editor-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+.tag-section-heading h2 { font-size: 14px; font-weight: 500; }
+.tag-editor-actions { justify-content: flex-end; margin-top: 14px; }
+.tag-filter { position: relative; min-width: 0; max-width: 320px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.tag-filter > .button { padding: 6px 10px; font-size: 12px; height: auto; flex-shrink: 0; }
+.tag-filter > .tag-chips { margin-top: 0; }
+.tag-filter-panel { position: absolute; top: calc(100% + 5px); right: 0; z-index: 20; width: min(310px, calc(100vw - 32px)); max-height: 300px; overflow: auto; padding: 14px; background: #242528; border: 1px solid #55565b; box-shadow: 0 8px 24px #0005; color: #d8dbe2; font-size: 12px; }
+.tag-filter-panel .field { margin-bottom: 8px; }
+.tag-filter-panel > .text-button { margin-top: 10px; }
+.tag-filter-options { display: grid; gap: 10px; margin-top: 12px; }
+.tag-filter-options label { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+.tag-filter-options input { width: auto; margin: 0; }
+.register-item { display: block; min-width: 0; }
+.register-item .tag-chips { margin-top: 6px; }
+.workbench-shell .register-item .register-name { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .workbench-shell .register-item { grid-column: 1; grid-row: 1; }
+  .tag-filter > .button { height: auto; }
+  .tag-filter-panel { left: 0; right: auto; }
+}

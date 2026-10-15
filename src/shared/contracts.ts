@@ -1,3 +1,4 @@
+import { tagNamesInput, tagFilterInput } from "./tags";
 import { z } from "zod";
 import { usageFrequencies, worthVerdicts } from "./reviews";
 export const itemReviewInput = z.object({
@@ -22,6 +23,7 @@ const name = z.string().trim().min(1).max(200);
 export const existingItemInput = z
   .object({
     name,
+    tags: tagNamesInput.optional(),
     categoryId: z.uuid(),
     acquiredOn: calendarDate.nullable().default(null),
     description: z.string().trim().max(5000).nullable().default(null),
@@ -30,6 +32,7 @@ export const existingItemInput = z
 export const wantInput = z
   .object({
     name,
+    tags: tagNamesInput.optional(),
     categoryId: z.uuid(),
     description: z.string().trim().max(5000).nullable().default(null),
     productUrl: z
@@ -54,6 +57,7 @@ export const wantInput = z
 export const purchaseInput = z
   .object({
     name,
+    tags: tagNamesInput.optional(),
     categoryId: z.uuid(),
     amountMinor: z.number().int().min(1).max(999999999999),
     currency: z.enum(currencies),
@@ -69,11 +73,13 @@ export const paginationInput = z.object({
 });
 export const collectionInput = paginationInput.extend({
   q: z.string().trim().max(200).default(""),
+  tagId: tagFilterInput,
   categoryId: z.uuid().optional(),
   sort: z.enum(["newest", "name", "purchased"]).default("newest"),
 });
 export const wantsListInput = paginationInput.extend({
   q: z.string().trim().max(200).default(""),
+  tagId: tagFilterInput,
   categoryId: z.uuid().optional(),
   sort: z.enum(["priority", "newest", "name"]).default("priority"),
 });
@@ -106,3 +112,5 @@ export const bootstrapInput = z
       }, "Use a valid time zone."),
   })
   .strict();
+
+export const tagsListInput = paginationInput.extend({ q: z.string().trim().max(200).default("") });
