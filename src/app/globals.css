@@ -127,76 +127,7 @@ svg {
 .text-button:hover {
   text-decoration: underline;
 }
-.auth-page {
-  min-height: 100dvh;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-}
-.auth-story {
-  padding: 54px 64px;
-  background: #f1f2e9;
-  display: flex;
-  flex-direction: column;
-}
-.story-copy {
-  margin: auto 0;
-  padding: 65px 0 36px;
-  max-width: 460px;
-}
-.story-copy h1 {
-  font-family: Georgia, serif;
-  font-weight: 400;
-  font-size: clamp(60px, 6.25vw, 94px);
-  letter-spacing: -4px;
-  line-height: 1.07;
-  color: #2c4937;
-}
-.story-copy p {
-  font-size: 17px;
-  line-height: 1.8;
-  color: #737b6d;
-  max-width: 360px;
-  margin-top: 30px;
-}
-.story-objects {
-  display: flex;
-  gap: 18px;
-  margin-top: 50px;
-}
-.story-objects > div {
-  height: 124px;
-  width: 124px;
-  background: #e4e8dc;
-  border-radius: 12px;
-  color: #65755c;
-  display: grid;
-  place-items: center;
-}
-.story-objects > div:nth-child(2) {
-  background: #ebe4d8;
-  color: #8a7d64;
-}
-.story-objects > div:nth-child(3) {
-  background: #e1e8e4;
-  color: #678278;
-}
-.auth-form-side {
-  background: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  padding: 70px 44px 110px;
-}
-.auth-form-wrap {
-  width: 100%;
-  max-width: 390px;
-}
-.auth-form-wrap h2 {
-  font-size: 32px;
-  font-weight: 500;
-  letter-spacing: -1px;
-}
+
 .auth-subtitle {
   color: var(--muted);
   margin-top: 13px;
@@ -274,8 +205,6 @@ textarea {
   margin-left: 4px;
 }
 .auth-private {
-  position: absolute;
-  bottom: 44px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -707,41 +636,10 @@ textarea {
   .item-list .item-copy > p {
     display: none;
   }
-  .auth-story {
-    padding: 40px;
-  }
-  .story-objects > div {
-    width: 90px;
-    height: 100px;
-  }
-  .story-objects svg {
-    width: 60px;
-  }
-  .story-objects {
-    gap: 12px;
-  }
+
 }
 @media (max-width: 760px) {
-  .auth-page {
-    grid-template-columns: 1fr;
-  }
-  .auth-story {
-    padding: 25px;
-  }
-  .story-copy {
-    display: none;
-  }
-  .auth-form-side {
-    min-height: calc(100dvh - 85px);
-    padding: 48px 26px 100px;
-    align-items: flex-start;
-  }
-  .auth-form-wrap {
-    max-width: 430px;
-  }
-  .auth-form-wrap h2 {
-    font-size: 29px;
-  }
+
   .sidebar .brand {
     font-size: 20px;
     padding: 0;
@@ -2188,4 +2086,20 @@ textarea {
   .workbench-shell .register-item { grid-column: 1; grid-row: 1; }
   .tag-filter > .button { height: auto; }
   .tag-filter-panel { left: 0; right: auto; }
+}
+
+/* Account forms open over the public inventory workspace. */
+.workbench-shell .space-account .button,
+.workbench-shell .space-account .text-button { font-size: 13px; white-space: nowrap; }
+.workbench-shell .space-account .button { padding: 7px 12px; min-height: 32px; }
+.auth-dialog .auth-subtitle { margin: 0 0 24px; }
+.auth-dialog .auth-private { margin-top: 24px; color: var(--muted); }
+.auth-dialog .auth-switch { margin-bottom: 0; }
+@media (min-width: 701px) and (max-width: 1100px) {
+  .workbench-shell .space-tabs { position: static; transform: none; justify-content: center; border-bottom: 1px solid var(--border); }
+  .workbench-shell .workbench-main { height: calc(100dvh - 112px); }
+}
+@media (max-width: 700px) {
+  .workbench-shell .space-account { gap: 12px; }
+  .workbench-shell .space-account .button { padding: 6px 10px; }
 }
