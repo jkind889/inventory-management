@@ -48,6 +48,14 @@ rolls both back. Existing purchase receipt hashes remain compatible.
 “Already owned” creates no expense, including on retries. Disabling the submit
 button improves interaction but does not provide the server guarantee.
 
+“Purchase only” submits to `POST /api/expenses` with the `expense` operation type.
+It saves a named transaction with no item link, using the same atomic receipt
+contract. Reusing a key across `/expenses` and `/purchases` returns 409, even when
+the fields match. Switching entry types or editing fields creates a new intended
+submission; “Add another after saving” clears the successful attempt. The form
+retains an attempt after an ambiguous failure until success, edited content, or
+closing the form. Reloading or closing abandons the in-memory draft.
+
 For future external side effects, such as provider payments or messages, use the
 provider's idempotency support or a transactional outbox. A database transaction
 alone cannot roll back an external action.

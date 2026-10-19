@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import Image from "next/image";
 import type { User } from "@supabase/supabase-js";
 import { Icon } from "@/components/icon";
 import { api, errorMessage } from "@/lib/api";
 import { getBrowserClient } from "@/lib/supabase-browser";
-import { TagPicker } from "@/features/tags/tag-controls";
 import { TAGS_CHANGED, type Tag } from "@/shared/tags";
 import { Dialog } from "@/components/dialog";
 import { CollectionWorkbench } from "./collection-workbench";
@@ -14,218 +14,15 @@ import { WantsScreen } from "@/features/wants/wants-screen";
 import { SpendingScreen } from "@/features/spending/spending-screen";
 import { SUBSCRIPTIONS_CHANGED } from "@/features/subscriptions/subscriptions";
 import { currencies } from "@/shared/contracts";
+import { ItemEditor } from "./item-editor";
+import { CollectionTools, type FilterDraft, emptyFilters } from "./collection-tools";
+import type { items } from "@/server/db/schema";
 import {
-  getSubmissionAttempt,
-  type SubmissionAttempt,
-} from "@/shared/submission";
-import {
-  parsePrice,
   starterCategories,
   type Category,
   type CollectionResponse,
   type Profile,
 } from "@/shared/collection";
-function AddItem({
-  categories,
-  profile,
-  close,
-  saved,
-  categoryId,
-}: {
-  categories: Category[];
-  profile: Profile;
-  close: () => void;
-  saved: (name: string) => void;
-  categoryId: string;
-}) {
-  const [purchase, setPurchase] = useState(true);
-  const [tags, setTags] = useState<string[]>([]);
-  const [pendingTag, setPendingTag] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const attempt = useRef<SubmissionAttempt | null>(null);
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: profile.timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (busy || pendingTag) return;
-    const form = new FormData(event.currentTarget);
-    const name = String(form.get("name")).trim();
-    const common = {
-      name,
-      categoryId: String(form.get("category")),
-      ...(tags.length ? { tags } : {}),
-    };
-    const note = String(form.get("note") || "").trim() || null;
-    const amountMinor = parsePrice(String(form.get("price") || ""));
-    if (purchase && amountMinor === null) {
-      setError(
-        "Enter a price greater than zero, with up to two decimal places.",
-      );
-      return;
-    }
-    const payload = purchase
-      ? {
-          ...common,
-          amountMinor,
-          currency: profile.currency,
-          occurredOn: String(form.get("date")),
-          merchant: String(form.get("merchant") || "").trim() || null,
-          note,
-        }
-      : {
-          ...common,
-          acquiredOn: String(form.get("date") || "") || null,
-          description: note,
-        };
-    const body = JSON.stringify(payload);
-    const path = purchase ? "/purchases" : "/items";
-    attempt.current = getSubmissionAttempt(attempt.current, path, body);
-    setBusy(true);
-    setError("");
-    try {
-      await api(path, {
-        method: "POST",
-        body,
-        headers: {
-          "Idempotency-Key": attempt.current.key,
-        },
-      });
-      attempt.current = null;
-      saved(name);
-    } catch (err) {
-      setError(errorMessage(err));
-      setBusy(false);
-    }
-  }
-  return (
-    <Dialog title="Add to your collection" close={close} busy={busy}>
-      <p className="muted">Give the things you own a home.</p>
-      <div className="segmented">
-        <button
-          aria-pressed={purchase}
-          disabled={busy}
-          onClick={() => {
-            setPurchase(true);
-            setError("");
-          }}
-        >
-          New purchase
-        </button>
-        <button
-          aria-pressed={!purchase}
-          disabled={busy}
-          onClick={() => {
-            setPurchase(false);
-            setError("");
-          }}
-        >
-          Already owned
-        </button>
-      </div>
-      <p className="field-help">
-        {purchase
-          ? "Record an item and its purchase together."
-          : "Add something you own without recording new spending."}
-      </p>
-      <form onSubmit={submit} className="item-form">
-        <fieldset disabled={busy} key={String(purchase)}>
-          <label className="field">
-            Item name
-            <input
-              name="name"
-              required
-              maxLength={200}
-              placeholder="e.g. Everyday headphones"
-              autoFocus
-            />
-          </label>
-          <label className="field">
-            Category
-            <select
-              name="category"
-              required
-              defaultValue={categoryId || categories[0]?.id}
-            >
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="form-row">
-            {purchase && (
-              <label className="field">
-                Price ({profile.currency})
-                <input
-                  name="price"
-                  required
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  maxLength={13}
-                />
-              </label>
-            )}
-            <label className="field">
-              {purchase ? "Purchase date" : "Acquired on (optional)"}
-              <input
-                name="date"
-                type="date"
-                min="1900-01-01"
-                required={purchase}
-                defaultValue={purchase ? today : ""}
-              />
-            </label>
-          </div>
-          {purchase && (
-            <label className="field">
-              Store (optional)
-              <input
-                name="merchant"
-                maxLength={200}
-                placeholder="Where did you find it?"
-              />
-            </label>
-          )}
-          <label className="field">
-            Notes (optional)
-            <textarea
-              name="note"
-              maxLength={5000}
-              rows={3}
-              placeholder="Anything you’d like to remember."
-            />
-          </label>
-        </fieldset>
-        <TagPicker value={tags} onChange={setTags} pendingChanged={setPendingTag} disabled={busy} />
-        {error && (
-          <p className="form-message error" role="alert">
-            {error}
-          </p>
-        )}
-        <div className="dialog-actions">
-          <button
-            type="button"
-            className="button secondary"
-            disabled={busy}
-            onClick={close}
-          >
-            Cancel
-          </button>
-          <button className="button primary" disabled={busy || pendingTag}>
-            {busy ? "Adding…" : "Add item"}
-            <Icon name="plus" size={18} />
-          </button>
-        </div>
-      </form>
-    </Dialog>
-  );
-}
 // Display-only starter collections. Guest actions never submit these IDs.
 const guestCategories: Category[] = starterCategories.map((name) => ({
   id: `guest-${name.toLowerCase()}`,
@@ -245,6 +42,7 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
     "collection",
   );
   const [addCategory, setAddCategory] = useState("");
+  const [recentCategoryIds, setRecentCategoryIds] = useState<string[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [categories, setCategories] = useState<Category[]>(user ? [] : guestCategories);
   const [setupError, setSetupError] = useState("");
@@ -273,6 +71,9 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
     return () => { window.removeEventListener('inventory:photos-changed', refreshPhotos); window.removeEventListener(SUBSCRIPTIONS_CHANGED, refreshPhotos); };
   }, []);
   const [add, setAdd] = useState(false);
+  const [editor, setEditor] = useState<{item: typeof items.$inferSelect; mode: "edit" | "duplicate"} | null>(null);
+  const [filters, setFilters] = useState<FilterDraft>(emptyFilters);
+  const [checked, setChecked] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [signingOut, setSigningOut] = useState(false);
@@ -286,6 +87,7 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
     category,
     tagFilters,
     refresh,
+    filters,
   ]);
   const requestPending = completedRequest?.key !== requestKey;
   const loading = !!user && (query !== search || requestPending);
@@ -340,6 +142,7 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
     });
     if (category) params.set("categoryId", category);
     tagFilters.forEach(tag => params.append("tagId", tag.id));
+    for (const [key,value] of Object.entries(filters)) if (value !== "") params.set(key,value);
     api<CollectionResponse>(`/collection?${params}`, {
       signal: controller.signal,
     })
@@ -364,7 +167,7 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
         }
       });
     return () => controller.abort();
-  }, [profile, search, sort, offset, category, tagFilters, requestKey, screen]);
+  }, [profile, search, sort, offset, category, tagFilters, requestKey, screen, filters]);
   useEffect(() => {
     const changed = () => { setRefresh(value => value + 1); setOffset(0); };
     window.addEventListener(TAGS_CHANGED, changed);
@@ -374,6 +177,7 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
     setCategory(id);
     setOffset(0);
     setSelected(null);
+    setChecked([]);
   }
   async function signOut() {
     setSigningOut(true);
@@ -390,12 +194,13 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
       <header className="space-header">
         <button
           className="space-brand"
+          aria-label="Marscorp inventory home"
           onClick={() => {
             setScreen("collection");
             setSelected(null);
           }}
         >
-          marscorp
+          <Image src="/marscorp-logo.png" alt="Marscorp" width={1877} height={838} sizes="(max-width: 700px) 90px, 104px" className="space-logo" preload />
         </button>
         <nav className="space-account" aria-label="Account navigation">
           {user ? <>
@@ -476,7 +281,7 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
         ) : !profile && user ? (
           <p role="status">Opening your space…</p>
         ) : screen === "spending" && profile ? (
-          <SpendingScreen profile={profile} openItem={setSelected} />
+          <SpendingScreen profile={profile} categories={categories} openItem={setSelected} />
         ) : screen === "wants" && profile ? (
           <WantsScreen
             profile={profile}
@@ -498,37 +303,52 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
             selected={selected}
             refresh={refresh}
             openItem={setSelected}
+            hasFilters={filters.state !== "owned" || !!filters.from || !!filters.to || !!filters.minAmountMinor || !!filters.maxAmountMinor}
+            clearFilters={() => { setQuery("");setSearch("");setCategory("");setFilters(emptyFilters);setOffset(0);setChecked([]);setSelected(null); }}
+            checked={checked}
+            toggleChecked={(id) => setChecked(v => v.includes(id) ? v.filter(x => x !== id) : [...v,id])}
+            editItem={(item) => setEditor({item,mode:"edit"})}
+            duplicateItem={(item) => setEditor({item,mode:"duplicate"})}
+            tools={profile && <CollectionTools recentCategory={setRecentCategoryIds} profile={profile} categories={categories} query={query} category={category} sort={sort} filters={filters} checked={checked} applyView={(v) => { setQuery(v.q); setSearch(v.q); setCategory(v.categoryId ?? ""); setSort(v.sort); setFilters(v.filters); setOffset(0); setSelected(null); setChecked([]); }} changeFilters={(v) => { setFilters(v); setOffset(0); setSelected(null); setChecked([]); }} changed={(message) => { setOffset(0); setRefresh(v=>v+1); setChecked([]); setSelected(null); setNotice(message); }} clearChecked={() => setChecked([])} refresh={refresh} />}
             filter={filter}
             changeQuery={(value) => {
               setQuery(value);
               setSelected(null);
+              setChecked([]);
             }}
             changeSort={(value) => {
+              setChecked([]);
               setSort(value);
               setOffset(0);
               setSelected(null);
             }}
             changePage={(value) => {
+              setChecked([]);
               setOffset(value);
               setSelected(null);
             }}
             retry={() => setRefresh((v) => v + 1)}
             addItem={() => {
               if (!user) { onAuthenticate("signup"); return; }
-              setAddCategory(category);
+              setAddCategory(category || recentCategoryIds[0] || "");
               setAdd(true);
             }}
           />
         )}
       </main>
-      {add && profile && (
-        <AddItem
+      {(add || editor) && profile && (
+        <ItemEditor
+          recentCategoryIds={recentCategoryIds}
+          mode={editor?.mode ?? "create"}
+          source={editor?.item}
           categories={categories}
           categoryId={addCategory}
           profile={profile}
-          close={() => setAdd(false)}
-          saved={(name) => {
-            setAdd(false);
+          close={() => {setAdd(false);setEditor(null);}}
+          saved={(name, another, entry) => {
+            if (!another) {setAdd(false);setEditor(null);}
+            const wasEdit=editor?.mode === "edit";
+            setFilters(emptyFilters);
             setQuery("");
             setSearch("");
             setCategory("");
@@ -538,7 +358,8 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
             setOffset(0);
             setRefresh((v) => v + 1);
             setSelected(null);
-            setNotice(`${name} was added to your collection.`);
+            setChecked([]);
+            setNotice(wasEdit ? `${name} was updated.` : entry.kind === "expense" ? `${name} was recorded in Spending.` : `${name} was added to your collection.`);
           }}
         />
       )}

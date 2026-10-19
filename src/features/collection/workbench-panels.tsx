@@ -41,13 +41,15 @@ export function WorkbenchSidebar({
   );
 }
 
-export function WorkbenchInspector({ selected, categories, profile, close, wants = false, emptyContent }: {
+export function WorkbenchInspector({ selected, categories, profile, close, wants = false, emptyContent, editItem, duplicateItem }: {
   selected: string | null;
   categories: Category[];
   profile: Profile | null;
   close: () => void;
   wants?: boolean;
   emptyContent?: ReactNode;
+  editItem?: (item: typeof import("@/server/db/schema").items.$inferSelect) => void;
+  duplicateItem?: (item: typeof import("@/server/db/schema").items.$inferSelect) => void;
 }) {
   return (
     <section className="workbench-detail" aria-label="Item details">
@@ -56,7 +58,7 @@ export function WorkbenchInspector({ selected, categories, profile, close, wants
         {selected && <button className="icon-button" aria-label="Close item details" onClick={close}><Icon name="close" size={16} /></button>}
       </header>
       <div className="inspector-scroll" aria-live="polite">
-        {selected && profile ? <ItemDetails key={selected} id={selected} categories={categories} profile={profile} /> : emptyContent ?? (
+        {selected && profile ? <ItemDetails key={selected} id={selected} categories={categories} profile={profile} editItem={editItem} duplicateItem={duplicateItem} /> : emptyContent ?? (
           <div className="inspector-empty">
             <Icon name="box" size={32} />
             <h1>{wants ? "Select a future want" : "Select an item"}</h1>

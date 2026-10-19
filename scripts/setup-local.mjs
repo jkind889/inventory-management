@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import postgres from "postgres";
-const status = JSON.parse(execFileSync("npx", ["supabase", "status", "-o", "json"], { encoding: "utf8" }));
+const status = JSON.parse(execFileSync("npx", ["supabase", "status", "-o", "json", ...(process.env.SUPABASE_WORKDIR ? ["--workdir", process.env.SUPABASE_WORKDIR] : [])], { encoding: "utf8" }));
 const adminUrl = new URL(status.DB_URL);
 if (!["127.0.0.1", "localhost"].includes(adminUrl.hostname)) throw new Error("Local setup requires a loopback database.");
 const password = randomBytes(32).toString("hex");

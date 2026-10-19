@@ -23,14 +23,17 @@
     "db:types": "drizzle-kit pull",
     "db:setup:local": "node scripts/setup-local.mjs",
     "db:check": "node --conditions=react-server --import tsx scripts/check-db.ts",
-    "test:collection-home": "node tests/collection-home.browser.mjs"
+    "test:collection-home": "node tests/collection-home.browser.mjs",
+    "test:collection-tools": "node tests/collection-tools.browser.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.2",
     "drizzle-orm": "0.45.3",
+    "fflate": "0.8.3",
     "hono": "4.13.12",
     "ipaddr.js": "2.5.0",
     "next": "16.3.8",
+    "papaparse": "5.7.0",
     "postgres": "3.4.9",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -39,8 +42,10 @@
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@playwright/test": "1.64.1",
     "@tailwindcss/postcss": "4.3.3",
     "@types/node": "26.6.3",
+    "@types/papaparse": "5.5.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "dotenv": "18.0.5",

@@ -9,7 +9,7 @@ import { ItemTags } from "@/features/tags/item-tags";
 import { ItemWorth } from "./item-worth";
 import { ItemSubscription } from "@/features/subscriptions/subscriptions";
 
-export function ItemDetails({ id, categories, profile }: { id: string; categories: Category[]; profile: Profile }) {
+export function ItemDetails({ id, categories, profile, editItem, duplicateItem }: { id: string; categories: Category[]; profile: Profile; editItem?: (item: ItemDetail["item"]) => void; duplicateItem?: (item: ItemDetail["item"]) => void }) {
   const [response, setResponse] = useState<{ detail?: ItemDetail; error?: string } | null>(null);
   const [retry, setRetry] = useState(0);
   const refreshPhoto = useCallback(() => setRetry(v => v + 1), []);
@@ -26,7 +26,8 @@ export function ItemDetails({ id, categories, profile }: { id: string; categorie
   const category = categories.find((c) => c.id === item.categoryId)?.name ?? "Other";
   return <article className="item-inspector">
     <h1>{item.name}</h1>
-    <p className="inspector-meta">{category}<span aria-hidden="true"> / </span>{item.state === "wishlist" ? "Future want" : "Owned"}</p>
+    {(editItem || duplicateItem) && <div className="inspector-actions">{editItem && <button className="button secondary" onClick={() => editItem(item)}>Edit item</button>}{duplicateItem && item.state !== "wishlist" && <button className="button secondary" onClick={() => duplicateItem(item)}>Duplicate item</button>}</div>}
+    <p className="inspector-meta">{category}<span aria-hidden="true"> / </span>{item.state === "wishlist" ? "Future want" : item.state.charAt(0).toUpperCase() + item.state.slice(1)}</p>
     <ItemTags key={item.id} itemId={item.id} initial={item.tags ?? []} />
     <ItemPhoto itemId={item.id} name={item.name} category={category} cover={response.detail.cover ?? null} pending={response.detail.pendingPhoto ?? null} refresh={refreshPhoto} />
     <dl className="inspector-fields">

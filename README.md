@@ -13,6 +13,30 @@ A desktop-first collection and purchase tracker. Built with Next.js, React, Type
 
 The homepage now includes email sign-in, account creation, password-reset screens, and a responsive collection interface. Search, category filters, sorting, grid/list views, item details, new purchases, and existing-item entry use the authenticated Hono API. The Spending view shows a selected month’s total, category breakdown, and paginated purchase history with linked item details. The collection home groups categories into editorial blocks with the two latest distinct purchased items by actual transaction date. Future Wants saves wishlist entries with optional estimated prices, product links, notes, and priority; these do not affect owned-item counts or spending. Subscriptions supports monthly/yearly renewal tracking, configurable in-app reminders and an opt-in Resend daily digest; expected prices do not create expenses. See [subscription reminders and local email setup](docs/subscription-reminders.md). Item details supports saved value check-ins with verdict, usage, repurchase intent, notes, and history. Private item cover photos are implemented: save an item first, then add, replace, or remove its photo from details using a file or a direct HTTPS image link. The enforced limit is 5,000,000 bytes. Wishlist-to-purchase conversion, refunds, confirmed subscription charges, and suggested check-in dates are next. See [item photos](docs/item-photos.md). See [item value check-ins](docs/item-worth.md). See [the build plan](docs/build-plan.md) for the product scope.
 
+## Collection tools
+
+To record groceries, meals, or other spending without an item document, open
+**Spending → Add purchase** and use **Purchase only**. Enter a purchase name,
+category, price, and date, with an optional store and notes. The purchase appears
+in spending totals and history without adding anything to the collection. The
+same option is available in the collection's add form. **Add another after
+saving** keeps the form open for a separate purchase. Failed submissions can be
+retried safely while the form remains open.
+
+Migration `20261019003307_standalone_purchases.sql` adds purchase names and the
+standalone expense retry operation. Apply it after the collection-tools migration
+before deploying this feature. ZIP backups and transaction CSV exports preserve
+standalone purchases; older ZIP backups remain supported.
+
+The standalone-purchase migration is applied to the isolated local test backend and hosted project `mkthxogkzllahenbrxle`.
+Verification passed 135 unit/API/database tests, TypeScript, lint, the production
+build, and desktop/mobile browser checks for retries, separate submissions,
+spending history, and unchanged collection counts. Hosted schema checks passed; application deployment is separate.
+
+Collections now supports repeat entry with remembered categories, editing and duplication, bulk edits, notes search, combined ownership/date/cost filters, saved views, previewed CSV imports, and complete ZIP backups/restoration with photos. The existing dark workbench layout is retained. See [collection tools](docs/collection-tools.md) for usage, limits, retry behavior, and verification.
+
+The collection-tools migration is applied locally and to the configured hosted project; apply it before deploying to any other database. This checkout currently uses an isolated local test backend, not hosted credentials. Run `npm run test:collection-tools` against a local preview for the real Auth/API/Storage/browser workflow.
+
 ## Project connections
 
 - Repository: https://github.com/jkind889/inventory-management
@@ -20,9 +44,9 @@ The homepage now includes email sign-in, account creation, password-reset screen
 - Dashboard: https://supabase.com/dashboard/project/mkthxogkzllahenbrxle
 - Application tables are in the **app** schema, not public. Select that schema in the table editor.
 
-Ten migrations have been applied to the hosted project, including retry receipts for existing-item creation, item value check-ins, private item-photo Storage policies, direct image imports, tags, subscription reminders and paginated reminder discovery. Local filenames match its migration history. The repository contains the application scaffold, migration history, and setup instructions.
+Twelve migrations have been applied to the hosted project, including retry receipts for existing-item creation, item value check-ins, private item-photo Storage policies, direct image imports, tags, subscription reminders, paginated reminder discovery, collection tools, and standalone purchases. Local filenames match its migration history. The repository contains the application scaffold, migration history, and setup instructions.
 
-The hosted URL, publishable key, and restricted `inventory_runtime` connection are configured in the ignored `.env.local`. The connection uses `aws-0-us-east-1.pooler.supabase.com:6543` with a generated password kept out of Git. TLS verifies the certificate chain and hostname using the official Supabase root CA bundled in `src/server/db/supabase-ca.ts`. Run `npm run db:check` for a read-only hosted connection check. Supabase CLI authentication/linking is separate from the connected Supabase tool used to apply these migrations.
+Configure the hosted URL, publishable key, and restricted `inventory_runtime` connection in the ignored `.env.local` when using the hosted project. The connection uses `aws-0-us-east-1.pooler.supabase.com:6543` with a generated password kept out of Git. TLS verifies the certificate chain and hostname using the official Supabase root CA bundled in `src/server/db/supabase-ca.ts`. Run `npm run db:check` for a read-only hosted connection check. Supabase CLI authentication/linking is separate from the connected Supabase tool used to apply these migrations.
 
 ## Local development
 
@@ -103,6 +127,7 @@ Account endpoints require `Authorization: Bearer <Supabase access token>`. The i
 | GET /api/items | Owned, unarchived items; `limit` and `offset` pagination. |
 | POST /api/items | Existing item with name/category and optional acquisition date/description; no expense. Requires a UUID `Idempotency-Key` header. |
 | POST /api/purchases | Owned item plus expense, in one transaction. Requires a UUID `Idempotency-Key` header. |
+| POST /api/expenses | Named purchase without an item; requires a UUID `Idempotency-Key` header. Uses the purchase body below without tags and returns `{ transaction, replayed }`. |
 | GET /api/transactions | Confirmed expenses with item/category names and total count; `limit`/`offset` pagination and optional paired `from`/`to` dates (inclusive). |
 | GET /api/spending/summary?from=2026-10-01&to=2026-10-31 | Inclusive calendar-date spending total and category breakdown. |
 
@@ -150,7 +175,7 @@ The collection creates a profile and seven starter categories on first sign-in. 
 
 ## Spending view
 
-After signing in, choose **Spending** in the sidebar or mobile navigation. The initial month uses the account timezone. Month controls update both the total and history using actual purchase dates, including the first and last calendar day. History pages show 10 transactions; totals always include the full selected month. Existing possessions without expenses do not affect totals. Archived items/categories retain their spending records. This first spending slice is read-only; quick-expense entry, corrections, refunds, and recurring subscription charges remain future work.
+After signing in, choose **Spending** in the sidebar or mobile navigation. The initial month uses the account timezone. Month controls update both the total and history using actual purchase dates, including the first and last calendar day. History pages show 10 transactions; totals always include the full selected month. Existing possessions without expenses do not affect totals. Archived items/categories retain their spending records. Use **Add purchase → Purchase only** to record spending without a collection item. Corrections, refunds, and recurring subscription charges remain future work.
 
 ## Editorial layout and Future Wants
 

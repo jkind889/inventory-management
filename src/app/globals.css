@@ -2053,6 +2053,60 @@ textarea {
 .photo-link-form input { width: 100%; min-width: 0; color: var(--ink); background: var(--surface); border-color: var(--border); }
 .photo-link-form input::placeholder { color: var(--muted); }
 .photo-link-form .muted { margin: 0; }
+/* Collection tools extend the existing Workbench palette and control system. */
+.collection-tools { padding: 8px 18px; border-bottom: 1px solid var(--border); font: 12px/1.5 var(--mono); }
+.collection-tool-actions, .saved-view-controls, .saved-view-controls form, .inspector-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.collection-tool-actions { margin-bottom: 8px; }
+.saved-view-controls label { display: flex; align-items: center; gap: 8px; }
+.collection-tools input:not([type="checkbox"]), .collection-tools select { min-width: 0; background: #1b1c1f; color: var(--ink); border: 1px solid #515662; border-radius: 3px; padding: 6px 8px; min-height: 32px; font: inherit; }
+.saved-view-controls input { width: 160px; }
+.saved-view-controls select { max-width: 190px; }
+.saved-view-controls details { position: relative; }
+.saved-view-controls summary { cursor: pointer; }
+.saved-view-controls details > div { position: absolute; right: 0; z-index: 5; background: #242528; border: 1px solid var(--border); padding: 12px; min-width: 200px; max-height: 250px; overflow: auto; }
+.saved-view-controls details p { display: flex; gap: 14px; justify-content: space-between; }
+.advanced-filters { display: flex; align-items: end; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+.advanced-filters label { display: grid; gap: 5px; }
+.advanced-filters input { width: 125px; }
+.selection-hint { margin: 8px 0 0; color: var(--muted); }
+.workbench-shell .register-selectable { position: relative; padding-left: 36px; }
+.register-checkbox { position: absolute; left: 15px; top: 13px; accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+.inspector-actions { margin: 12px 0; }
+.check-field { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.check-field input { width: 16px; height: 16px; accent-color: var(--accent); }
+.transfer-options { display: grid; gap: 12px; }
+.import-mapping { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+.import-mapping label { display: grid; gap: 5px; font: 12px var(--mono); }
+.workbench-shell .import-mapping select { width: 100%; min-width: 0; padding: 8px; background: #1b1c1f; color: var(--ink); border: 1px solid #515662; }
+.import-preview { max-height: 260px; overflow: auto; border: 1px solid var(--border); }
+.import-preview table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.import-preview th, .import-preview td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.import-preview th { position: sticky; top: 0; background: #242528; }
+.workbench-shell .collection-tools .button { min-height: 30px; padding: 5px 10px; font-size: 12px; }
+.workbench-shell input[type="date"] { color-scheme: dark; }
+.workbench-results { min-height: 380px; }
+@media (max-width: 700px) {
+  .collection-tools { padding: 8px 10px; }
+  .saved-view-controls { align-items: stretch; }
+  .saved-view-controls form { flex: 1; }
+  .saved-view-controls input { width: 120px; flex: 1; }
+  .advanced-filters label { flex: 1 1 135px; }
+  .advanced-filters input, .advanced-filters select { width: 100%; }
+  .workbench-shell .register-selectable { padding-left: 27px; }
+  .register-checkbox { left: 8px; }
+  .import-mapping { grid-template-columns: 1fr; }
+  .collection-workbench .workbench-results { min-height: 450px; }
+}
+.saved-view-controls label { white-space: nowrap; }
+.workbench-shell .register-checkbox { padding: 0; margin: 0; min-height: 0; height: 14px; width: 14px; top: 50%; transform: translateY(-50%); }
+.collection-workbench .register-columns { padding-left: 56px; }
+@media (max-width: 900px) { .collection-workbench .register-columns { padding-left: 50px; } }
+@media (max-width: 700px) { .collection-workbench .register-columns { padding-left: 41px; } }
+.check-field input { min-height: 16px; padding: 0; margin: 0; flex: none; }
+@media (min-width: 701px) and (min-height: 800px) {
+  .collection-workbench .workbench-workspace { grid-template-rows: minmax(180px, 1fr) minmax(460px, 1fr); }
+  .collection-workbench:has(.advanced-filters) .workbench-workspace { grid-template-rows: minmax(180px, 0.8fr) minmax(530px, 1.2fr); }
+}
 
 /* Tags share the workbench's compact neutral controls. */
 .tag-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; }
@@ -2102,4 +2156,17 @@ textarea {
 @media (max-width: 700px) {
   .workbench-shell .space-account { gap: 12px; }
   .workbench-shell .space-account .button { padding: 6px 10px; }
+}
+
+/* Preserve the complete mark and a consistent header click target. */
+.workbench-shell .space-brand { display: flex; align-items: center; flex-shrink: 0; min-height: 44px; }
+.workbench-shell .space-logo { display: block; width: 104px; height: 46px; object-fit: contain; }
+@media (max-width: 700px) {
+  .workbench-shell .space-logo { width: 90px; height: 40px; }
+}
+
+.spending-actions { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+@media (max-width: 760px) {
+  .spending-actions { width: 100%; gap: 12px; }
+  .spending-actions > .button { width: 100%; }
 }
