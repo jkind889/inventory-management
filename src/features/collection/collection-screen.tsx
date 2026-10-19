@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Image from "next/image";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
 import type { User } from "@supabase/supabase-js";
 import { Icon } from "@/components/icon";
 import { api, errorMessage } from "@/lib/api";
@@ -195,11 +197,13 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
         <button
           className="space-brand"
           aria-label="Marscorp inventory home"
+          aria-label="Marscorp inventory home"
           onClick={() => {
             setScreen("collection");
             setSelected(null);
           }}
         >
+          <Image src="/marscorp-logo.png" alt="Marscorp" width={1877} height={838} sizes="(max-width: 700px) 90px, 104px" className="space-logo" preload />
           <Image src="/marscorp-logo.png" alt="Marscorp" width={1877} height={838} sizes="(max-width: 700px) 90px, 104px" className="space-logo" preload />
         </button>
         <nav className="space-account" aria-label="Account navigation">
