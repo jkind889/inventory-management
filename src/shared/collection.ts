@@ -8,6 +8,7 @@ import type {
   transactions,
 } from "../server/db/schema";
 export type Category = typeof categories.$inferSelect;
+export const ITEMS_CHANGED = "inventory:items-changed";
 export const starterCategories = ["Tech", "Clothes", "Hobbies", "Furniture", "Subscriptions", "Groceries", "Other"];
 export type ItemReview = typeof itemReviews.$inferSelect;
 export function isCollectionCategory(category: Pick<Category, "name">) {
