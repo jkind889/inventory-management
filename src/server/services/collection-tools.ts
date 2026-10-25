@@ -3,12 +3,14 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { z } from 'zod';
 import { withUser, type Database, type UserTransaction } from '../db/client';
-import { categories, collectionPreferences, itemPhotos, itemReviews, items, profiles, transactions } from '../db/schema';
+import { categories, collectionPreferences, itemPhotos, itemReviews, items, itemTags, profiles, renewalResolutions, subscriptions, tags, transactions } from '../db/schema';
 import { withIdempotency } from './idempotency';
 import { backupInput, duplicateIdentity, type Backup, type Preferences, type RestoreResult, type bulkItemInput, type importInput, type itemChanges } from '../../shared/collection-tools';
 
 export async function lockCollection(tx: UserTransaction, userId: string) {
-  const [profile] = await tx.select().from(profiles).where(eq(profiles.userId, userId)).for('update');
+  // Serialize collection writers without blocking FK key-share locks from
+  // item-first photo/review writes. Changes to profile keys still lock strongly.
+  const [profile] = await tx.select().from(profiles).where(eq(profiles.userId, userId)).for('no key update');
   if (!profile) throw new HTTPException(409, { message: 'Set up your profile first.' });
   return profile;
 }
@@ -104,7 +106,12 @@ export function createCollectionTools(db: Database) {
         const reviews=await tx.select().from(itemReviews).where(eq(itemReviews.userId,userId));
         const [prefs]=await tx.select().from(collectionPreferences).where(eq(collectionPreferences.userId,userId));
         const photos=await tx.select().from(itemPhotos).where(and(eq(itemPhotos.userId,userId),eq(itemPhotos.status,'active')));
-        const backup=backupInput.parse({format:'inventory-backup',version:1,exportedAt:new Date().toISOString(),profile,categories:allCategories,items:allItems,transactions:allTransactions,reviews,preferences:{savedViews:prefs?.savedViews??[],recentCategoryIds:prefs?.recentCategoryIds??[]},photos:photos.map(p=>({...p,file:`photos/${p.id}.${p.mimeType==='image/png'?'png':p.mimeType==='image/webp'?'webp':'jpg'}`}))});
+        const allTags=await tx.select().from(tags).where(eq(tags.userId,userId));
+        const allItemTags=await tx.select().from(itemTags).where(eq(itemTags.userId,userId));
+        const allSubscriptions=await tx.select().from(subscriptions).where(eq(subscriptions.userId,userId));
+        const resolutions=await tx.select().from(renewalResolutions).where(eq(renewalResolutions.userId,userId));
+        // Account-level email consent, unsubscribe tokens and delivery logs are not portable.
+        const backup=backupInput.parse({format:'inventory-backup',version:2,exportedAt:new Date().toISOString(),profile,categories:allCategories,items:allItems,transactions:allTransactions,reviews,tags:allTags,itemTags:allItemTags,subscriptions:allSubscriptions,renewalResolutions:resolutions,preferences:{savedViews:prefs?.savedViews??[],recentCategoryIds:prefs?.recentCategoryIds??[]},photos:photos.map(p=>({...p,file:`photos/${p.id}.${p.mimeType==='image/png'?'png':p.mimeType==='image/webp'?'webp':'jpg'}`}))});
         return {backup,photoPaths:photos.map(p=>({id:p.id,path:p.storagePath}))};
       },{isolationLevel:'repeatable read'});
     },
@@ -136,6 +143,24 @@ export function createCollectionTools(db: Database) {
         for(const {id: _id,itemId,...data} of input.reviews) {
           void _id;
           await tx.insert(itemReviews).values({userId,itemId:result.itemIds[itemId],...data});
+        }
+        if(input.version===2) {
+          const tagIds=new Map<string,string>();
+          // Reuse an account's unused tag with the same name; never reuse a supplied ID.
+          for(const tag of [...input.tags].sort((a,b)=>a.name.localeCompare(b.name))) {
+            const [restored]=await tx.insert(tags).values({userId,name:tag.name}).onConflictDoUpdate({target:[tags.userId,tags.name],set:{name:tag.name}}).returning({id:tags.id});
+            tagIds.set(tag.id,restored.id);
+          }
+          for(const link of input.itemTags) await tx.insert(itemTags).values({userId,itemId:result.itemIds[link.itemId],tagId:tagIds.get(link.tagId)!,slot:link.slot});
+          const subscriptionIds=new Map<string,string>();
+          for(const {id,itemId,...data} of input.subscriptions) {
+            const newId=randomUUID();subscriptionIds.set(id,newId);
+            await tx.insert(subscriptions).values({id:newId,userId,itemId:result.itemIds[itemId],...data});
+          }
+          for(const {id: _id,subscriptionId,...data} of input.renewalResolutions) {
+            void _id;
+            await tx.insert(renewalResolutions).values({userId,subscriptionId:subscriptionIds.get(subscriptionId)!,...data});
+          }
         }
         const preferences={savedViews:input.preferences.savedViews.map(v=>({...v,filters:{...v.filters,categoryId:v.filters.categoryId?categoryIds.get(v.filters.categoryId):undefined}})),recentCategoryIds:input.preferences.recentCategoryIds.map(id=>categoryIds.get(id)!)};
         await tx.insert(collectionPreferences).values({userId,...preferences}).onConflictDoUpdate({target:collectionPreferences.userId,set:preferences});
