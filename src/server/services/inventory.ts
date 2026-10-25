@@ -9,10 +9,12 @@ import { categories, itemReviews, items, profiles, transactions, tags } from "..
 import { starterCategories } from "../../shared/collection";
 import type { itemReviewInput } from "../../shared/contracts";
 import { withIdempotency } from "./idempotency";
-import type { PurchaseInput, bootstrapInput, existingItemInput, wantInput, wantsListInput, collectionInput, transactionListInput } from "../../shared/contracts";
+import { createCollectionTools, lockCollection, rememberCategory } from "./collection-tools";
+import type { ExpenseInput, PurchaseInput, bootstrapInput, existingItemInput, wantInput, wantsListInput, collectionInput, transactionListInput } from "../../shared/contracts";
 
 export function createInventoryService(db: Database) {
   return {
+    ...createCollectionTools(db),
     collectionOverview(userId: string) {
       return withUser(db, userId, async tx => {
         const active = await tx.select().from(categories).where(and(eq(categories.userId, userId), isNull(categories.archivedAt))).orderBy(categories.createdAt, categories.id);
@@ -52,19 +54,33 @@ export function createInventoryService(db: Database) {
       const { names, fields, receipt } = creationTags(input);
       const payload = { ...receipt, state: "wishlist" as const };
       const result = await withIdempotency(db, userId, key, "existing_item", payload, async tx => {
+        await lockCollection(tx, userId);
         const [category] = await tx.select({ id: categories.id }).from(categories).where(and(eq(categories.userId, userId), eq(categories.id, input.categoryId), isNull(categories.archivedAt)));
         if (!category) throw new HTTPException(422, { message: "Choose an active category from your collection." });
         const [item] = await tx.insert(items).values({ userId, ...fields, state: "wishlist" }).returning();
+        await rememberCategory(tx, userId, input.categoryId);
         return { item: { ...item, tags: await replaceTags(tx, userId, item.id, names) } };
       });
       return { ...result, item: { ...result.item, tags: result.item.tags ?? [] } };
     },
-    collection(userId: string, input: z.infer<typeof collectionInput>) {
+    collection(userId: string, input: Omit<z.infer<typeof collectionInput>, "state"> & {state?: z.infer<typeof collectionInput>["state"]}) {
+      const state = input.state ?? "owned";
       return withUser(db, userId, async tx => {
-        const where = and(eq(items.userId, userId), eq(items.state, "owned"), isNull(items.archivedAt),
+        const cost = sql<string | null>`(select sum(t.amount_minor) from app.transactions t where t.user_id = ${userId} and t.item_id = "items"."id")`;
+        const where = and(eq(items.userId, userId), state !== "all" ? eq(items.state, state) : undefined, isNull(items.archivedAt),
           input.categoryId ? eq(items.categoryId, input.categoryId) : undefined,
-          taggedWhere(userId, input.q, input.tagId));
-        const order = input.sort === "name" ? asc(items.name) : input.sort === "purchased" ? sql`${items.acquiredOn} desc nulls last` : desc(items.createdAt);
+          input.from ? gte(items.acquiredOn, input.from) : undefined,
+          input.to ? lte(items.acquiredOn, input.to) : undefined,
+          input.minAmountMinor !== undefined ? sql`${cost} >= ${input.minAmountMinor}` : undefined,
+          input.maxAmountMinor !== undefined ? sql`${cost} <= ${input.maxAmountMinor}` : undefined,
+          taggedWhere(userId, "", input.tagId),
+          input.q ? sql`(strpos(lower(${items.name}), lower(${input.q})) > 0
+            or strpos(lower(coalesce(${items.description}, '')), lower(${input.q})) > 0
+            or exists (select 1 from app.transactions n where n.user_id = ${userId} and n.item_id = "items"."id"
+              and (strpos(lower(coalesce(n.note, '')), lower(${input.q})) > 0 or strpos(lower(coalesce(n.merchant, '')), lower(${input.q})) > 0))
+            or exists (select 1 from app.item_tags it join app.tags t on t.user_id = it.user_id and t.id = it.tag_id
+              where it.user_id = ${userId} and it.item_id = "items"."id" and strpos(t.name, lower(${input.q})) > 0))` : undefined);
+        const order = input.sort === "name" ? asc(items.name) : input.sort === "purchased" ? sql`${items.acquiredOn} desc nulls last` : input.sort === "price" ? sql`${cost} desc nulls last` : desc(items.createdAt);
         const data = await tx.select({ ...getTableColumns(items), tags: selectedTags,
           recordedCostMinor: sql<string | null>`(select sum(t.amount_minor)::text from app.transactions t where t.user_id = ${userId} and t.item_id = "items"."id")`,
         }).from(items).where(where).orderBy(order, items.id).limit(input.limit).offset(input.offset);
@@ -102,6 +118,8 @@ export function createInventoryService(db: Database) {
     async setItemTags(userId: string, id: string, key: string, supplied: string[]) {
       const names = tagNamesInput.parse(supplied).sort();
       return withIdempotency(db, userId, key, "item_tags", { itemId: id, tags: names }, async tx => {
+        // Match item edits: profile before item, then tag and receipt writes.
+        await lockCollection(tx, userId);
         const [item] = await tx.select({ id: items.id }).from(items).where(and(eq(items.userId, userId), eq(items.id, id), isNull(items.archivedAt))).for("update");
         if (!item) throw new HTTPException(404, { message: "This item could not be found." });
         const attached = await replaceTags(tx, userId, id, names);
@@ -130,9 +148,11 @@ export function createInventoryService(db: Database) {
     async existingItem(userId: string, key: string, input: z.infer<typeof existingItemInput>) {
       const { names, fields, receipt } = creationTags(input);
       const result = await withIdempotency(db, userId, key, "existing_item", receipt, async tx => {
+        await lockCollection(tx, userId);
         const [category] = await tx.select({ id: categories.id }).from(categories).where(and(eq(categories.userId, userId), eq(categories.id, input.categoryId), isNull(categories.archivedAt)));
         if (!category) throw new HTTPException(422, { message: "Choose an active category from your collection." });
         const [item] = await tx.insert(items).values({ userId, ...fields }).returning();
+        await rememberCategory(tx, userId, input.categoryId);
         return { item: { ...item, tags: await replaceTags(tx, userId, item.id, names) } };
       });
       return { ...result, item: { ...result.item, tags: result.item.tags ?? [] } };
@@ -140,6 +160,7 @@ export function createInventoryService(db: Database) {
     async purchase(userId: string, key: string, input: PurchaseInput) {
       const { names, receipt } = creationTags(input);
       const result = await withIdempotency(db, userId, key, "purchase", receipt, async tx => {
+        await lockCollection(tx, userId);
         const [profile] = await tx.select().from(profiles).where(eq(profiles.userId, userId));
         if (!profile) throw new HTTPException(409, { message: "Set up your profile first." });
         if (profile.currency !== input.currency) throw new HTTPException(422, { message: "Use your profile's reporting currency." });
@@ -150,9 +171,23 @@ export function createInventoryService(db: Database) {
           userId, itemId: item.id, categoryId: input.categoryId, amountMinor: input.amountMinor,
           currency: input.currency, occurredOn: input.occurredOn, merchant: input.merchant, note: input.note,
         }).returning();
+        await rememberCategory(tx, userId, input.categoryId);
         return { item: { ...item, tags: await replaceTags(tx, userId, item.id, names) }, transaction };
       });
       return { ...result, item: { ...result.item, tags: result.item.tags ?? [] } };
+    },
+    expense(userId: string, key: string, input: ExpenseInput) {
+      return withIdempotency(db, userId, key, "expense", input, async tx => {
+        await lockCollection(tx, userId);
+        const [profile] = await tx.select().from(profiles).where(eq(profiles.userId, userId));
+        if (!profile) throw new HTTPException(409, { message: "Set up your profile first." });
+        if (profile.currency !== input.currency) throw new HTTPException(422, { message: "Use your profile's reporting currency." });
+        const [category] = await tx.select({ id: categories.id }).from(categories).where(and(eq(categories.userId, userId), eq(categories.id, input.categoryId), isNull(categories.archivedAt)));
+        if (!category) throw new HTTPException(422, { message: "Choose an active category from your collection." });
+        const [transaction] = await tx.insert(transactions).values({ userId, itemId: null, ...input }).returning();
+        await rememberCategory(tx, userId, input.categoryId);
+        return { transaction };
+      });
     },
     transactionHistory(userId: string, input: z.infer<typeof transactionListInput>) {
       return withUser(db, userId, async tx => {

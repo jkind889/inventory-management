@@ -32,6 +32,7 @@ async function reservePending(tx: UserTransaction, userId: string, itemId: strin
 }
 export function createPhotoService(db: Database, storage: PhotoStorage, fetchImage: PhotoDownloader = downloadPhoto) {
   const service = {
+    signBackup(paths: string[]) { return storage.sign(paths); },
     async cleanup(userId: string) {
       // Bytes cannot be rolled back with SQL. Retain tombstones and retry cleanup
       // on later interactions, including a late Storage write to a retired path.

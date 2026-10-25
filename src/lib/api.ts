@@ -19,7 +19,8 @@ export async function api<T>(
   const body = await response.json();
   if (!response.ok) {
     if (response.status === 401) await client.auth.signOut({ scope: "local" });
-    throw new Error(body.error ?? "Something went wrong. Please try again.");
+    const issue = body.issues?.[0]?.message;
+    throw new Error(issue ? `${body.error ?? "Invalid input."} ${issue}` : body.error ?? "Something went wrong. Please try again.");
   }
   return body as T;
 }

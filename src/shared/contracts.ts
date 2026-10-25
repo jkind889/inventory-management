@@ -67,6 +67,9 @@ export const purchaseInput = z
   })
   .strict();
 export type PurchaseInput = z.infer<typeof purchaseInput>;
+// Standalone spending shares purchase validation without creating an inventory item.
+export const expenseInput = purchaseInput.omit({ tags: true });
+export type ExpenseInput = z.infer<typeof expenseInput>;
 export const paginationInput = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(30),
   offset: z.coerce.number().int().min(0).max(100000).default(0),
@@ -75,8 +78,13 @@ export const collectionInput = paginationInput.extend({
   q: z.string().trim().max(200).default(""),
   tagId: tagFilterInput,
   categoryId: z.uuid().optional(),
-  sort: z.enum(["newest", "name", "purchased"]).default("newest"),
-});
+  sort: z.enum(["newest", "name", "purchased", "price"]).default("newest"),
+  state: z.enum(["all", "owned", "wishlist", "sold", "returned", "donated"]).default("owned"),
+  from: calendarDate.optional(), to: calendarDate.optional(),
+  minAmountMinor: z.coerce.number().int().min(0).max(999999999999).optional(),
+  maxAmountMinor: z.coerce.number().int().min(0).max(999999999999).optional(),
+}).refine(v => !v.from || !v.to || v.from <= v.to, "Start date must precede end date.")
+  .refine(v => v.minAmountMinor === undefined || v.maxAmountMinor === undefined || v.minAmountMinor <= v.maxAmountMinor, "Minimum price must not exceed maximum price.");
 export const wantsListInput = paginationInput.extend({
   q: z.string().trim().max(200).default(""),
   tagId: tagFilterInput,

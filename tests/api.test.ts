@@ -12,7 +12,7 @@ describe("API boundary", () => {
   it("requires authentication before accessing records", async () => {
     expect((await api().request("/api/items")).status).toBe(401);
     expect((await api().request("/api/items", { headers: { Authorization: "Bearer forged" } })).status).toBe(401);
-    for (const path of ["/api/collections/overview", "/api/wants"]) expect((await api().request(path)).status).toBe(401);
+    for (const path of ["/api/collections/overview", "/api/wants", "/api/expenses"]) expect((await api().request(path)).status).toBe(401);
   });
   it("rejects invalid calendar dates, fractional cents, and supplied user IDs", async () => {
     const base = { name: "Headphones", categoryId: userId, amountMinor: 100, currency: "USD", occurredOn: "2026-10-01" };
@@ -24,13 +24,25 @@ describe("API boundary", () => {
   it("rejects malformed JSON and missing request keys", async () => {
     const headers = { Authorization: "Bearer valid", "Content-Type": "application/json" };
     expect((await api().request("/api/items", { method: "POST", headers: { ...headers, "Idempotency-Key": userId }, body: "{" })).status).toBe(400);
-    for (const path of ["/api/items", "/api/purchases"]) {
+    for (const path of ["/api/items", "/api/purchases", "/api/expenses"]) {
       const common = { name: "Headphones", categoryId: userId };
       const body = JSON.stringify(path === "/api/items" ? common : { ...common, amountMinor: 100, currency: "USD", occurredOn: "2026-10-01" });
       for (const key of [undefined, "not-a-uuid"]) {
         expect((await api().request(path, { method: "POST", headers: { ...headers, ...(key ? { "Idempotency-Key": key } : {}) }, body })).status).toBe(400);
       }
     }
+  });
+  it("validates standalone purchases and forwards normalized fields", async () => {
+    const headers = { Authorization: "Bearer valid", "Content-Type": "application/json", "Idempotency-Key": userId };
+    const base = { name: "Groceries", categoryId: userId, amountMinor: 4200, currency: "USD", occurredOn: "2026-10-18" };
+    for (const change of [{ name: " " }, { name: "x".repeat(201) }, { amountMinor: 0 }, { amountMinor: 0.5 }, { amountMinor: 1e12 }, { occurredOn: "2026-02-30" }, { currency: "JPY" }, { categoryId: "bad" }, { merchant: "x".repeat(201) }, { note: "x".repeat(5001) }, { userId }, { itemId: userId }, { tags: ["food"] }]) {
+      expect((await api().request("/api/expenses", { method: "POST", headers, body: JSON.stringify({ ...base, ...change }) })).status).toBe(400);
+    }
+    expect((await api().request("/api/expenses", { method: "POST", headers, body: "{" })).status).toBe(400);
+    const expense = vi.fn(async () => ({ transaction: { id: userId, itemId: null }, replayed: false }));
+    const app = createApi({ verifyToken: async () => userId, service: () => ({ expense }) as unknown as InventoryService });
+    expect((await app.request("/api/expenses", { method: "POST", headers, body: JSON.stringify({ ...base, name: " Groceries " }) })).status).toBe(201);
+    expect(expense).toHaveBeenCalledWith(userId, userId, { ...base, merchant: null, note: null });
   });
   it("validates paired transaction dates before querying", async () => {
     const headers = { Authorization: "Bearer valid" };

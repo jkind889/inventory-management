@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState } from "react";
+import { ItemEditor } from "@/features/collection/item-editor";
 import { Icon, categoryIcon } from "@/components/icon";
 import { api, errorMessage } from "@/lib/api";
-import { formatDate, formatMoney, type Profile } from "@/shared/collection";
+import { formatDate, formatMoney, type Category, type Profile } from "@/shared/collection";
 import {
   currentMonth,
   monthRange,
@@ -14,11 +15,15 @@ import {
 const PAGE_SIZE = 10;
 export function SpendingScreen({
   profile,
+  categories,
   openItem,
 }: {
   profile: Profile;
+  categories: Category[];
   openItem: (id: string) => void;
 }) {
+  const [adding, setAdding] = useState(false);
+  const [notice, setNotice] = useState("");
   const [month, setMonth] = useState(() => currentMonth(profile.timezone));
   const [offset, setOffset] = useState(0);
   const [retry, setRetry] = useState(0);
@@ -95,6 +100,10 @@ export function SpendingScreen({
           <h1>Spending</h1>
           <p className="muted">A clearer picture of your purchases.</p>
         </div>
+        <div className="spending-actions">
+          <button className="button primary" onClick={() => setAdding(true)}>
+            <Icon name="plus" size={18} /> Add purchase
+          </button>
         <div className="month-control">
           <button
             className="icon-button"
@@ -121,7 +130,23 @@ export function SpendingScreen({
             <Icon name="arrow" />
           </button>
         </div>
+        </div>
       </header>
+      {notice && <p className="form-message" role="status">{notice}</p>}
+      {adding && <ItemEditor
+        profile={profile}
+        categories={categories}
+        categoryId={categories.find(category => category.name.toLowerCase() === "groceries")?.id ?? categories[0]?.id ?? ""}
+        initialEntry="expense"
+        close={() => setAdding(false)}
+        saved={(name, another, entry) => {
+          if (!another) setAdding(false);
+          if (entry.kind !== "owned") selectMonth(entry.occurredOn.slice(0, 7));
+          setOffset(0);
+          setRetry(value => value + 1);
+          setNotice(entry.kind === "owned" ? `${name} was added to your collection.` : `${name} was recorded in Spending.`);
+        }}
+      />}
       {error ? (
         <div className="empty-state" role="alert">
           <h2>We couldn’t load your spending.</h2>
@@ -200,8 +225,8 @@ export function SpendingScreen({
                 <Icon name="calendar" size={40} />
                 <h2>No purchases this month.</h2>
                 <p>
-                  Purchases added to your collection will appear here on their
-                  purchase date.
+                  Record a purchase with or without a collection item. It will
+                  appear here on its purchase date.
                 </p>
               </div>
             ) : (
@@ -234,14 +259,15 @@ export function SpendingScreen({
                               </span>
                               <div>
                                 <strong>
-                                  {t.itemName ?? t.merchant ?? "Expense"}
+                                  {t.itemName ?? t.name ?? t.merchant ?? "Expense"}
                                 </strong>
                                 <span className="mobile-transaction-meta">
                                   {t.categoryName} · {formatDate(t.occurredOn)}
                                 </span>
-                                {t.itemName && t.merchant && (
+                                {(t.itemName || t.name) && t.merchant && (
                                   <span>{t.merchant}</span>
                                 )}
+                                {!t.itemId && <span>Purchase only</span>}
                                 {t.note && (
                                   <span className="transaction-note">
                                     {t.note}

@@ -9,6 +9,7 @@ import { calendarToday, isAttention, renewalOn, renewalState, type ScheduleInput
 import { withUser, type Database, type UserTransaction } from "../db/client";
 import { categories, items, profiles, reminderPreferences, renewalResolutions, subscriptions } from "../db/schema";
 import { withIdempotency } from "./idempotency";
+import { lockCollection } from "./collection-tools";
 
 export async function lockReminders(tx: UserTransaction, userId: string) {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`reminders:${userId}`},0))`);
@@ -61,9 +62,9 @@ export function createSubscriptionService(db: Database, now = () => new Date()) 
     },
     create(userId: string, key: string, input: z.infer<typeof subscriptionCreateInput>) {
       return withIdempotency(db, userId, key, "subscription_create", input, async tx => {
+        // Item creation and restore use profile -> reminder/item lock order.
+        const profile = await lockCollection(tx, userId);
         await lockReminders(tx, userId);
-        const [profile] = await tx.select().from(profiles).where(eq(profiles.userId, userId));
-        if (!profile) throw new HTTPException(422, { message: "Open your collection first." });
         let itemId = input.itemId;
         if (itemId) {
           const [item] = await tx.select({ id: items.id }).from(items).innerJoin(categories, and(eq(items.categoryId, categories.id), eq(items.userId, categories.userId)))

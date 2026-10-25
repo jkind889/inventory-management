@@ -4,9 +4,10 @@ import { HTTPException } from "hono/http-exception";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import { z, ZodError } from "zod";
-import { tagsListInput, bootstrapInput, collectionInput, existingItemInput, wantInput, wantsListInput, paginationInput, purchaseInput, spendingInput, transactionListInput } from "../../shared/contracts";
+import { tagsListInput, bootstrapInput, collectionInput, existingItemInput, wantInput, wantsListInput, paginationInput, purchaseInput, expenseInput, spendingInput, transactionListInput } from "../../shared/contracts";
 import type { InventoryService } from "../services/inventory";
 import { itemReviewInput } from "../../shared/contracts";
+import { backupInput, bulkItemInput, importInput, itemChanges, preferencesInput } from "../../shared/collection-tools";
 
 import { photoUploadInput, photoRemoveInput, photoImportInput } from "../../shared/photos";
 import type { PhotoService } from "../services/photos";
@@ -20,7 +21,7 @@ type Dependencies = { verifyToken: (token: string) => Promise<string | null>; se
 export function createApi(deps: Dependencies) {
   const app = new Hono<{ Variables: { userId: string; token: string } }>().basePath("/api");
   app.use("*", secureHeaders());
-  app.use("*", bodyLimit({ maxSize: 32 * 1024 }));
+  app.use("*", async (c, next) => bodyLimit({ maxSize: c.req.path === "/api/collection/restore" ? 20 * 1024 * 1024 : c.req.path === "/api/collection/import" ? 4 * 1024 * 1024 : 32 * 1024 })(c, next));
   app.get("/health", c => c.json({ status: "ok" }));
   app.post("/internal/reminders/run", async c => {
     const secret = process.env.REMINDER_WORKER_SECRET;
@@ -105,6 +106,41 @@ export function createApi(deps: Dependencies) {
     const input = itemTagsInput.parse(await c.req.json());
     return c.json(await deps.service().setItemTags(c.get("userId"), id, key, input.tags));
   });
+  app.get("/collection/preferences", async c => c.json(await deps.service().preferences(c.get("userId"))));
+  app.put("/collection/preferences", async c => {
+    const key = z.uuid().parse(c.req.header("Idempotency-Key"));
+    return c.json(await deps.service().savePreferences(c.get("userId"), key, preferencesInput.parse(await c.req.json())));
+  });
+  app.patch("/items/:id", async c => {
+    const id = z.uuid().parse(c.req.param("id"));
+    const key = z.uuid().parse(c.req.header("Idempotency-Key"));
+    return c.json(await deps.service().editItem(c.get("userId"), id, key, itemChanges.parse(await c.req.json())));
+  });
+  app.patch("/collection/bulk", async c => {
+    const key = z.uuid().parse(c.req.header("Idempotency-Key"));
+    return c.json(await deps.service().bulkEdit(c.get("userId"), key, bulkItemInput.parse(await c.req.json())));
+  });
+  app.post("/collection/import", async c => {
+    const key = z.uuid().parse(c.req.header("Idempotency-Key"));
+    const result = await deps.service().importCollection(c.get("userId"), key, importInput.parse(await c.req.json()));
+    return c.json(result, result.replayed ? 200 : 201);
+  });
+  app.get("/collection/backup", async c => {
+    const {backup, photoPaths} = await deps.service().backup(c.get("userId"));
+    if (photoPaths.length && !deps.photos) throw new HTTPException(503, {message: "Photo backup is unavailable. Try again later."});
+    const urls = await deps.photos?.(c.get("token")).signBackup(photoPaths.map(p=>p.path));
+    if (photoPaths.some(p=>!urls?.get(p.path))) throw new HTTPException(503, {message:"Some photos could not be backed up. Try again later."});
+    return c.json({backup, photoDownloads:photoPaths.map(p=>({id:p.id,url:urls!.get(p.path)!}))});
+  });
+  app.get("/collection/export", async c => {
+    const {backup} = await deps.service().backup(c.get("userId"));
+    return c.json({backup});
+  });
+  app.post("/collection/restore", async c => {
+    const key = z.uuid().parse(c.req.header("Idempotency-Key"));
+    const result = await deps.service().restoreCollection(c.get("userId"), key, backupInput.parse(await c.req.json()));
+    return c.json(result, result.replayed ? 200 : 201);
+  });
   app.get("/items/:id", async c => {
     const id = z.uuid().parse(c.req.param("id"));
     const detail = await deps.service().itemDetail(c.get("userId"), id);
@@ -167,6 +203,12 @@ export function createApi(deps: Dependencies) {
     const key = z.uuid().parse(c.req.header("Idempotency-Key"));
     const input = purchaseInput.parse(await c.req.json());
     const result = await deps.service().purchase(c.get("userId"), key, input);
+    return c.json(result, result.replayed ? 200 : 201);
+  });
+  app.post("/expenses", async c => {
+    const key = z.uuid().parse(c.req.header("Idempotency-Key"));
+    const input = expenseInput.parse(await c.req.json());
+    const result = await deps.service().expense(c.get("userId"), key, input);
     return c.json(result, result.replayed ? 200 : 201);
   });
   app.get("/transactions", async c => {

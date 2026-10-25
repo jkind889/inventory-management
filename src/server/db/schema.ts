@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { bigint, boolean, date, integer, jsonb, pgSchema, smallint, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { usageFrequencies, worthVerdicts } from "../../shared/reviews";
 import type { Subscription } from "../../shared/subscriptions";
+import type { Preferences, ImportResult, RestoreResult } from "../../shared/collection-tools";
 
 // Query models only. supabase/migrations owns constraints, indexes, grants, and RLS.
 export const appSchema = pgSchema("app");
@@ -34,7 +35,7 @@ export const itemTags = appSchema.table("item_tags", {
 });
 export const transactions = appSchema.table("transactions", {
   id: uuid("id").primaryKey().defaultRandom(), userId: uuid("user_id").notNull(), categoryId: uuid("category_id").notNull(),
-  itemId: uuid("item_id"), kind: text("kind").notNull().default("expense"),
+  itemId: uuid("item_id"), name: text("name"), kind: text("kind").notNull().default("expense"),
   amountMinor: bigint("amount_minor", { mode: "number" }).notNull(), currency: text("currency").notNull(),
   occurredOn: date("occurred_on").notNull(), merchant: text("merchant"), note: text("note"), ...audit(),
 });
@@ -62,15 +63,27 @@ export type OperationResults = {
   subscription_advance: { subscription: Subscription };
   subscription_stop: { subscription: Subscription };
   reminder_preferences: { enabled: boolean; revision: number };
+  item_edit: { item: typeof items.$inferSelect };
+  bulk_edit: { updated: number };
+  preferences: Preferences;
+  collection_import: ImportResult;
+  collection_restore: RestoreResult;
   photo_import: { upload: typeof itemPhotos.$inferSelect };
   photo_upload: { upload: typeof itemPhotos.$inferSelect };
   photo_complete: { photoId: string };
   photo_remove: { removedPhotoId: string };
   purchase: PurchaseResult;
+  expense: { transaction: typeof transactions.$inferSelect };
   existing_item: { item: TaggedItem<typeof items.$inferSelect> };
   item_tags: { itemId: string; tags: Tag[] };
   item_review: { review: typeof itemReviews.$inferSelect };
 };
+export const collectionPreferences = appSchema.table("collection_preferences", {
+  userId: uuid("user_id").primaryKey(),
+  savedViews: jsonb("saved_views").$type<Preferences['savedViews']>().notNull().default([]),
+  recentCategoryIds: jsonb("recent_category_ids").$type<string[]>().notNull().default([]),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "string" }).notNull().defaultNow(),
+});
 export const operations = appSchema.table("operations", {
   id: uuid("id").primaryKey().defaultRandom(), userId: uuid("user_id").notNull(), idempotencyKey: uuid("idempotency_key").notNull(),
   operationType: text("operation_type").notNull(), requestHash: text("request_hash").notNull(),
