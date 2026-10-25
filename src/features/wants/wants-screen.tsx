@@ -9,6 +9,7 @@ import { Icon } from "@/components/icon";
 import { WorkbenchInspector, WorkbenchPagination, WorkbenchSidebar } from "@/features/collection/workbench-panels";
 import {
   formatMoney,
+  ITEMS_CHANGED,
   parsePrice,
   type Category,
   type Profile,
@@ -205,7 +206,8 @@ export function WantsScreen({ profile, categories }: { profile: Profile; categor
   useEffect(() => {
     const changed = () => { setRefresh(value => value + 1); setOffset(0); };
     window.addEventListener(TAGS_CHANGED, changed);
-    return () => window.removeEventListener(TAGS_CHANGED, changed);
+    window.addEventListener(ITEMS_CHANGED, changed);
+    return () => { window.removeEventListener(TAGS_CHANGED, changed); window.removeEventListener(ITEMS_CHANGED, changed); };
   }, []);
   function filter(id: string) {
     setCategory(id);

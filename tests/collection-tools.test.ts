@@ -1,4 +1,4 @@
-import {describe,expect,it} from 'vitest';
+import {describe,expect,it,vi} from 'vitest';
 import {collectionInput} from '../src/shared/contracts';
 import {backupInput,bulkItemInput,importInput,preferencesInput,duplicateIdentity} from '../src/shared/collection-tools';
 import {createApi} from '../src/server/api/app';
@@ -35,5 +35,19 @@ describe('collection tool validation',()=>{
   });
   it('rejects malformed backup structure and future backup versions',()=>{
     expect(backupInput.safeParse({format:'inventory-backup',version:2}).success).toBe(false);
+  });
+  it('accepts a category-only item replacement using authenticated identity and rejects invalid fields',async()=>{
+    const itemId='0048549f-640e-47cf-a761-972b637c209f';
+    const key='db39af54-3800-42bd-bb22-798b01e7e8ac';
+    const editItem=vi.fn(async()=>({item:{id:itemId,categoryId:id},replayed:false}));
+    const app=createApi({verifyToken:async token=>token==='valid'?id:null,service:()=>({editItem}) as unknown as InventoryService});
+    const headers={Authorization:'Bearer valid','Content-Type':'application/json','Idempotency-Key':key};
+    const request=(body:unknown)=>app.request(`/api/items/${itemId}`,{method:'PATCH',headers,body:JSON.stringify(body)});
+    for(const body of [{},{categoryId:null},{categoryId:''},{categoryId:'invalid'},{categoryId:[id]},{categoryId:id,userId:id},{categoryId:id,tags:['keep']},{categoryId:id,amountMinor:100}]) {
+      expect((await request(body)).status).toBe(400);
+    }
+    expect(editItem).not.toHaveBeenCalled();
+    expect((await request({categoryId:id})).status).toBe(200);
+    expect(editItem).toHaveBeenCalledExactlyOnceWith(id,itemId,key,{categoryId:id});
   });
 });

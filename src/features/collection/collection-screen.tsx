@@ -19,6 +19,7 @@ import { CollectionTools, type FilterDraft, emptyFilters } from "./collection-to
 import type { items } from "@/server/db/schema";
 import {
   starterCategories,
+  ITEMS_CHANGED,
   type Category,
   type CollectionResponse,
   type Profile,
@@ -171,7 +172,8 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
   useEffect(() => {
     const changed = () => { setRefresh(value => value + 1); setOffset(0); };
     window.addEventListener(TAGS_CHANGED, changed);
-    return () => window.removeEventListener(TAGS_CHANGED, changed);
+    window.addEventListener(ITEMS_CHANGED, changed);
+    return () => { window.removeEventListener(TAGS_CHANGED, changed); window.removeEventListener(ITEMS_CHANGED, changed); };
   }, []);
   function filter(id: string) {
     setCategory(id);

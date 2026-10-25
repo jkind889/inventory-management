@@ -5,7 +5,7 @@ import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {eq} from 'drizzle-orm';
 import {createDatabase,withUser} from '../src/server/db/client';
 import {createInventoryService} from '../src/server/services/inventory';
-import {categories,collectionPreferences,items,itemPhotos,transactions} from '../src/server/db/schema';
+import {categories,collectionPreferences,items,itemPhotos,operations,transactions} from '../src/server/db/schema';
 import {backupInput,importInput,preferencesInput} from '../src/shared/collection-tools';
 import {collectionInput} from '../src/shared/contracts';
 config({path:'.env.test.local',override:true,quiet:true});
@@ -45,6 +45,58 @@ describe.skipIf(!process.env.DATABASE_ADMIN_URL)('collection tools in local Post
     expect((await service.collection(a,collectionInput.parse({q:'photo store',state:'all'}))).total).toBe(1);
     expect((await service.collection(a,collectionInput.parse({q:'%',state:'all'}))).total).toBe(0);
     expect((await service.collection(b,collectionInput.parse({q:'travel',state:'all'}))).total).toBe(0);
+  });
+  it('replaces one category, preserves item fields/tags/spending, and safely retries repeated edits',async()=>{
+    const replacement=(await service.categories(a)).find(category=>category.id!==categoryA)!.id;
+    const purchase=await service.purchase(a,randomUUID(),{name:'Category replacement specimen',categoryId:categoryA,amountMinor:4567,currency:'USD',occurredOn:'2026-10-15',merchant:'Original store',note:'Original purchase note',tags:['keep category tag']});
+    await service.editItem(a,purchase.item.id,randomUUID(),{description:'Keep these notes'});
+    const before=await service.itemDetail(a,purchase.item.id);
+    const spendingBefore=await service.spending(a,'2026-10-15','2026-10-15');
+    const key=randomUUID(),input={categoryId:replacement};
+    const results=await Promise.all([service.editItem(a,purchase.item.id,key,input),service.editItem(a,purchase.item.id,key,input)]);
+    expect(results.map(result=>result.replayed).sort()).toEqual([false,true]);
+    const after=await service.itemDetail(a,purchase.item.id);
+    expect(after.item).toEqual({...before.item,categoryId:replacement,updatedAt:after.item.updatedAt});
+    expect(after.transactions).toEqual(before.transactions);
+    expect(await service.spending(a,'2026-10-15','2026-10-15')).toEqual(spendingBefore);
+    expect((await service.collection(a,collectionInput.parse({q:purchase.item.name,categoryId:categoryA}))).total).toBe(0);
+    expect((await service.collection(a,collectionInput.parse({q:purchase.item.name,categoryId:replacement}))).data.map(item=>item.id)).toEqual([purchase.item.id]);
+    await expect(service.editItem(a,purchase.item.id,key,{categoryId:categoryA})).rejects.toMatchObject({status:409});
+    await expect(service.existingItem(a,key,{name:'Wrong operation',categoryId:replacement,description:null,acquiredOn:null})).rejects.toMatchObject({status:409});
+    await service.editItem(a,purchase.item.id,randomUUID(),{categoryId:categoryA});
+    expect((await service.editItem(a,purchase.item.id,key,input)).replayed).toBe(true);
+    expect((await service.itemDetail(a,purchase.item.id)).item.categoryId).toBe(categoryA);
+    await service.editItem(a,purchase.item.id,randomUUID(),input);
+    expect((await service.itemDetail(a,purchase.item.id)).item.categoryId).toBe(replacement);
+    const snapshot=(await service.backup(a)).backup;
+    expect(snapshot.items.filter(item=>item.id===purchase.item.id)).toHaveLength(1);
+    expect(snapshot.items.find(item=>item.id===purchase.item.id)?.categoryId).toBe(replacement);
+    expect(snapshot.transactions.find(transaction=>transaction.id===purchase.transaction.id)?.categoryId).toBe(categoryA);
+  });
+  it('rejects unavailable categories and foreign items without writes or receipts, while scoping retry keys by account',async()=>{
+    const item=await service.existingItem(a,randomUUID(),{name:'Category access specimen',categoryId:categoryA,description:null,acquiredOn:null});
+    const before=await service.itemDetail(a,item.item.id);
+    const beforePreferences=await service.preferences(a);
+    const [archived]=await withUser(connection.db,a,tx=>tx.insert(categories).values({userId:a,name:'Archived category test',archivedAt:new Date().toISOString()}).returning());
+    const rejectedKeys=new Map<string,string>();
+    for(const unavailable of [categoryB,archived.id,randomUUID()]) {
+      const key=randomUUID();
+      rejectedKeys.set(unavailable,key);
+      await expect(service.editItem(a,item.item.id,key,{categoryId:unavailable})).rejects.toMatchObject({status:422});
+      expect(await service.itemDetail(a,item.item.id)).toEqual(before);
+      expect(await service.preferences(a)).toEqual(beforePreferences);
+      expect(await withUser(connection.db,a,tx=>tx.select().from(operations).where(eq(operations.idempotencyKey,key)))).toHaveLength(0);
+    }
+    await withUser(connection.db,a,tx=>tx.update(categories).set({archivedAt:null}).where(eq(categories.id,archived.id)));
+    expect((await service.editItem(a,item.item.id,rejectedKeys.get(archived.id)!,{categoryId:archived.id})).replayed).toBe(false);
+    expect((await service.itemDetail(a,item.item.id)).item.categoryId).toBe(archived.id);
+    const failedKey=randomUUID();
+    await expect(service.editItem(b,item.item.id,failedKey,{categoryId:categoryB})).rejects.toMatchObject({status:404});
+    const other=await service.existingItem(b,randomUUID(),{name:'Other account category specimen',categoryId:categoryB,description:null,acquiredOn:null});
+    expect((await service.editItem(b,other.item.id,failedKey,{categoryId:categoryB})).replayed).toBe(false);
+    expect((await service.editItem(a,item.item.id,failedKey,{categoryId:categoryA})).replayed).toBe(false);
+    await expect(service.editItem(a,other.item.id,failedKey,{categoryId:categoryA})).rejects.toMatchObject({status:409});
+    expect((await service.itemDetail(a,item.item.id)).transactions).toEqual([]);
   });
   it('imports once, creates categories, detects duplicates and rolls back failures',async()=>{
     const payload=importInput.parse({rows:[{name:'Imported chair',category:'New furniture'},{name:'Imported chair',category:'New furniture'},{name:'Imported lamp',category:'New furniture',amountMinor:9900,acquiredOn:'2026-10-02',currency:'USD'}]});

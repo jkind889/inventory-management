@@ -1942,6 +1942,7 @@ textarea {
 .workbench-shell .dialog { color: var(--ink); background: #242528; border: 1px solid #555b66; }
 .workbench-shell .dialog .field input,
 .workbench-shell .dialog .field select,
+.workbench-shell .item-category select,
 .workbench-shell .dialog .field textarea { background: #1b1c1f; color: var(--ink); border-color: #515662; }
 .workbench-shell .segmented { background: #1d1e21; }
 .workbench-shell .dialog .item-inspector { padding: 24px 0; }
@@ -2120,7 +2121,7 @@ textarea {
 .tag-picker .field-help { margin: 5px 0; }
 .tag-suggestions, .tag-page-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 12px; }
 .tag-suggestions > button, .tag-page-actions button { padding: 5px 8px; border: 1px solid #55565b; border-radius: 3px; background: #2c2d32; color: #d8dbe2; }
-.item-tags { margin: 22px 0; }
+.item-tags, .item-category { margin: 22px 0; }
 .tag-section-heading, .tag-editor-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
 .tag-section-heading h2 { font-size: 14px; font-weight: 500; }
 .tag-editor-actions { justify-content: flex-end; margin-top: 14px; }

@@ -5,6 +5,7 @@ import { Icon } from "@/components/icon";
 import { api, errorMessage } from "@/lib/api";
 import { formatDate, formatMoney, type Category, type ItemDetail, type Profile } from "@/shared/collection";
 import { ItemPhoto } from "./item-photo";
+import { ItemCategory } from "./item-category";
 import { ItemTags } from "@/features/tags/item-tags";
 import { ItemWorth } from "./item-worth";
 import { ItemSubscription } from "@/features/subscriptions/subscriptions";
@@ -28,6 +29,9 @@ export function ItemDetails({ id, categories, profile, editItem, duplicateItem }
     <h1>{item.name}</h1>
     {(editItem || duplicateItem) && <div className="inspector-actions">{editItem && <button className="button secondary" onClick={() => editItem(item)}>Edit item</button>}{duplicateItem && item.state !== "wishlist" && <button className="button secondary" onClick={() => duplicateItem(item)}>Duplicate item</button>}</div>}
     <p className="inspector-meta">{category}<span aria-hidden="true"> / </span>{item.state === "wishlist" ? "Future want" : item.state.charAt(0).toUpperCase() + item.state.slice(1)}</p>
+    <ItemCategory key={`category:${item.id}`} itemId={item.id} categoryId={item.categoryId} categories={categories} saved={categoryId => {
+      setResponse(current => current?.detail ? { detail: { ...current.detail, item: { ...current.detail.item, categoryId } } } : current);
+    }} />
     <ItemTags key={item.id} itemId={item.id} initial={item.tags ?? []} />
     <ItemPhoto itemId={item.id} name={item.name} category={category} cover={response.detail.cover ?? null} pending={response.detail.pendingPhoto ?? null} refresh={refreshPhoto} />
     <dl className="inspector-fields">
