@@ -18,7 +18,7 @@ function priceFilter(value:string) {
 function priceDisplay(value:string) {return !value||value==='invalid'?'':(Number(value)/100).toFixed(2);}
 export function CollectionTools({profile,categories,query,category,sort,filters,checked,applyView,changeFilters,changed,clearChecked,refresh,recentCategory}: {
   profile:Profile;categories:Category[];query:string;category:string;sort:string;filters:FilterDraft;checked:string[];
-  applyView:(view:View)=>void;changeFilters:(filters:FilterDraft)=>void;changed:(message:string)=>void;clearChecked:()=>void;refresh:number;recentCategory:(ids:string[])=>void;
+  applyView:(view:View)=>void;changeFilters:(filters:FilterDraft)=>void;changed:(message:string,refreshAccount?:boolean)=>void;clearChecked:()=>void;refresh:number;recentCategory:(ids:string[])=>void;
 }) {
   const [prefs,setPrefs]=useState<Preferences|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[saveName,setSaveName]=useState(''),[transfer,setTransfer]=useState<'import'|'export'|null>(null),[bulk,setBulk]=useState(false),[advanced,setAdvanced]=useState(false);
   const attempt=useRef<SubmissionAttempt|null>(null);
@@ -63,7 +63,7 @@ export function CollectionTools({profile,categories,query,category,sort,filters,
     {error&&<p className="form-message error" role="alert">{error} <button className="text-button" onClick={()=>{setError('');setRetry(v=>v+1);}}>Reload views</button></p>}
     {!!checked.length&&<p className="selection-hint">{checked.length} selected on this page. <button className="text-button" onClick={clearChecked}>Clear selection</button></p>}
     {bulk&&<BulkEditor ids={checked} categories={categories} close={()=>setBulk(false)} saved={message=>{setBulk(false);changed(message);}}/>}
-    {transfer&&<TransferDialog mode={transfer} profile={profile} close={()=>setTransfer(null)} changed={message=>{setTransfer(null);changed(message);}}/>}
+    {transfer&&<TransferDialog mode={transfer} profile={profile} close={()=>setTransfer(null)} changed={message=>{setTransfer(null);changed(message,true);}}/>}
   </div>;
 }
 function BulkEditor({ids,categories,close,saved}:{ids:string[];categories:Category[];close:()=>void;saved:(message:string)=>void}) {

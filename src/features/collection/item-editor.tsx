@@ -19,6 +19,11 @@ export function ItemEditor({categories,profile,categoryId,source,recentCategoryI
   const otherOptions=categories.filter(c=>!recentCategoryIds.includes(c.id));
   const editing=mode==='edit';
   const today=new Intl.DateTimeFormat('en-CA',{timeZone:profile.timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+  function changeEntry(next:EntryKind) {
+    if(next===entry)return;
+    // Changing entry type remounts the fieldset and discards the picker's draft.
+    setEntry(next);setPendingTags(false);setError('');
+  }
   async function submit(event:React.FormEvent<HTMLFormElement>) {
     event.preventDefault();if(busy)return;
     if(!editing&&!expense&&pendingTags){setError('Select or create the tag before saving.');return;}
@@ -41,9 +46,9 @@ export function ItemEditor({categories,profile,categoryId,source,recentCategoryI
   }
   return <Dialog title={editing?'Edit item':mode==='duplicate'?'Duplicate item':expense?'Add purchase':'Add to your collection'} close={close} busy={busy}>
     {!editing&&<><div className="segmented" aria-label="Entry type">
-      <button aria-pressed={entry==='purchase'} disabled={busy} onClick={()=>{setEntry('purchase');setError('');}}>New purchase</button>
-      <button aria-pressed={entry==='owned'} disabled={busy} onClick={()=>{setEntry('owned');setError('');}}>Already owned</button>
-      <button aria-pressed={expense} disabled={busy} onClick={()=>{setEntry('expense');setError('');}}>Purchase only</button>
+      <button aria-pressed={entry==='purchase'} disabled={busy} onClick={()=>changeEntry('purchase')}>New purchase</button>
+      <button aria-pressed={entry==='owned'} disabled={busy} onClick={()=>changeEntry('owned')}>Already owned</button>
+      <button aria-pressed={expense} disabled={busy} onClick={()=>changeEntry('expense')}>Purchase only</button>
     </div><p className="field-help">{expense?'Record spending for groceries, meals, or other purchases without adding an item to your collection.':mode==='duplicate'?'Copies item details. A new expense is recorded only if you choose New purchase.':purchase?'Record an item and its purchase together.':'Add something you own without recording new spending.'}</p></> }
     {editing&&<p className="field-help">Changes apply to the item. Purchase amounts, dates, and spending categories remain in your history.</p>}
     <form onSubmit={submit} className="item-form"><fieldset disabled={busy} key={`${entry}:${generation}`}>

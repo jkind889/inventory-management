@@ -170,7 +170,7 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
     return () => controller.abort();
   }, [profile, search, sort, offset, category, tagFilters, requestKey, screen, filters]);
   useEffect(() => {
-    const changed = () => { setRefresh(value => value + 1); setOffset(0); };
+    const changed = () => { setRefresh(value => value + 1); setOffset(0); setChecked([]); };
     window.addEventListener(TAGS_CHANGED, changed);
     window.addEventListener(ITEMS_CHANGED, changed);
     return () => { window.removeEventListener(TAGS_CHANGED, changed); window.removeEventListener(ITEMS_CHANGED, changed); };
@@ -180,6 +180,15 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
     setOffset(0);
     setSelected(null);
     setChecked([]);
+  }
+  function collectionChanged(message: string, refreshAccount = false) {
+    setOffset(0); setRefresh(value => value + 1); setChecked([]); setSelected(null); setNotice(message);
+    if (refreshAccount) {
+      // A transfer can change currency, timezone, and the available categories.
+      // Hide stale data until canonical account state reloads. A failed reload
+      // uses setup's retry screen, without resubmitting the completed transfer.
+      setProfile(null); setCompletedRequest(null); setSetupError(""); setSetupRetry(value => value + 1);
+    }
   }
   async function signOut() {
     setSigningOut(true);
@@ -299,7 +308,7 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
             query={query}
             category={category}
             tagFilters={tagFilters}
-            changeTags={(tags) => { setTagFilters(tags); setOffset(0); setSelected(null); }}
+            changeTags={(tags) => { setTagFilters(tags); setOffset(0); setSelected(null); setChecked([]); }}
             sort={sort}
             offset={offset}
             selected={selected}
@@ -311,7 +320,7 @@ export function CollectionScreen({ user, onAuthenticate, children }: {
             toggleChecked={(id) => setChecked(v => v.includes(id) ? v.filter(x => x !== id) : [...v,id])}
             editItem={(item) => setEditor({item,mode:"edit"})}
             duplicateItem={(item) => setEditor({item,mode:"duplicate"})}
-            tools={profile && <CollectionTools recentCategory={setRecentCategoryIds} profile={profile} categories={categories} query={query} category={category} sort={sort} filters={filters} checked={checked} applyView={(v) => { setQuery(v.q); setSearch(v.q); setCategory(v.categoryId ?? ""); setSort(v.sort); setFilters(v.filters); setOffset(0); setSelected(null); setChecked([]); }} changeFilters={(v) => { setFilters(v); setOffset(0); setSelected(null); setChecked([]); }} changed={(message) => { setOffset(0); setRefresh(v=>v+1); setChecked([]); setSelected(null); setNotice(message); }} clearChecked={() => setChecked([])} refresh={refresh} />}
+            tools={profile && <CollectionTools recentCategory={setRecentCategoryIds} profile={profile} categories={categories} query={query} category={category} sort={sort} filters={filters} checked={checked} applyView={(v) => { setQuery(v.q); setSearch(v.q); setCategory(v.categoryId ?? ""); setSort(v.sort); setFilters(v.filters); setOffset(0); setSelected(null); setChecked([]); }} changeFilters={(v) => { setFilters(v); setOffset(0); setSelected(null); setChecked([]); }} changed={collectionChanged} clearChecked={() => setChecked([])} refresh={refresh} />}
             filter={filter}
             changeQuery={(value) => {
               setQuery(value);

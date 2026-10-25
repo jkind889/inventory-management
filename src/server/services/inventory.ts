@@ -118,6 +118,8 @@ export function createInventoryService(db: Database) {
     async setItemTags(userId: string, id: string, key: string, supplied: string[]) {
       const names = tagNamesInput.parse(supplied).sort();
       return withIdempotency(db, userId, key, "item_tags", { itemId: id, tags: names }, async tx => {
+        // Match item edits: profile before item, then tag and receipt writes.
+        await lockCollection(tx, userId);
         const [item] = await tx.select({ id: items.id }).from(items).where(and(eq(items.userId, userId), eq(items.id, id), isNull(items.archivedAt))).for("update");
         if (!item) throw new HTTPException(404, { message: "This item could not be found." });
         const attached = await replaceTags(tx, userId, id, names);
